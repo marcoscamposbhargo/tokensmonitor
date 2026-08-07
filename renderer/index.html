@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Token Monitor</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="titlebar">
+      <div class="title">
+        <span class="dot" id="live-dot"></span>
+        <strong>Token Monitor</strong>
+      </div>
+      <div class="controls">
+        <button id="btn-cfg" title="Limites">⚙</button>
+        <button id="btn-pin" class="on" title="Sempre no topo">📌</button>
+        <button id="btn-min" title="Minimizar">–</button>
+        <button id="btn-close" title="Fechar">✕</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="banner" class="banner hidden"></div>
+
+      <section id="settings" class="settings hidden">
+        <label>
+          <span>Tokens/dia (M)</span>
+          <input type="number" id="in-daily-tok" min="0" step="1" />
+        </label>
+        <label>
+          <span>Tokens/sessão (M)</span>
+          <input type="number" id="in-session-tok" min="0" step="1" />
+        </label>
+        <label>
+          <span>Custo/dia (USD)</span>
+          <input type="number" id="in-daily" min="0" step="1" />
+        </label>
+        <label>
+          <span>Custo/sessão (USD)</span>
+          <input type="number" id="in-session" min="0" step="1" />
+        </label>
+        <label>
+          <span>Avisar em (%)</span>
+          <input type="number" id="in-warn" min="10" max="100" step="5" />
+        </label>
+        <label class="check">
+          <input type="checkbox" id="in-notify" />
+          <span>Notificar</span>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="in-sound" />
+          <span>Som</span>
+        </label>
+        <p class="hint">0 desliga. Custo em USD é estimativa de preço de API.</p>
+      </section>
+
+      <section class="cards">
+        <div class="card">
+          <span class="label">Hoje</span>
+          <span class="value" id="today-tokens">—</span>
+          <span class="sub" id="today-cost">—</span>
+        </div>
+        <div class="card">
+          <span class="label">Sessão atual</span>
+          <span class="value" id="cur-tokens">—</span>
+          <span class="sub" id="cur-project">—</span>
+        </div>
+        <div class="card">
+          <span class="label">Taxa</span>
+          <span class="value" id="rate">—</span>
+          <span class="sub">tokens/min (5 min)</span>
+        </div>
+        <div class="card">
+          <span class="label">Modelo ativo</span>
+          <span class="value small" id="cur-model">—</span>
+          <span class="sub" id="cur-cost">—</span>
+        </div>
+      </section>
+
+      <section class="breakdown">
+        <div class="bar" id="bar"></div>
+        <ul class="legend" id="legend"></ul>
+      </section>
+
+      <section class="chart-block">
+        <div class="section-title">Últimos 60 min</div>
+        <canvas id="chart" height="70"></canvas>
+      </section>
+
+      <section class="limits" id="limits"></section>
+
+      <nav class="tabs">
+        <button data-tab="live" class="active">Ao vivo</button>
+        <button data-tab="usage">Uso</button>
+        <button data-tab="models">Modelos</button>
+        <button data-tab="projects">Projetos</button>
+      </nav>
+
+      <section class="list" id="list"></section>
+    </main>
+
+    <footer>
+      <span id="footer-total">—</span>
+      <button id="btn-open" title="Abrir pasta dos transcripts">📁</button>
+    </footer>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

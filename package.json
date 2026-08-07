@@ -1,0 +1,12 @@
+{
+  "name": "token-monitor",
+  "version": "1.0.0",
+  "description": "Monitor de consumo de tokens do Claude Code em tempo real",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
