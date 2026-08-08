@@ -24,9 +24,12 @@ Revisão de precisão das métricas e redesenho do painel.
 - **Entradas sem chamada de API entravam na contagem.** Respostas `<synthetic>`
   e as marcadas com `isApiErrorMessage` somavam chamadas sem somar token
   (45 entradas na base local).
-- **Janela de limite era de 5h, é de 4h.** A duração virou `BLOCK_HOURS` em
-  `src/watcher.js` e viaja no snapshot, então cálculo e rótulos saem da mesma
-  constante.
+- **Duração da janela parametrizada.** Virou `BLOCK_HOURS` em `src/watcher.js` e
+  viaja no snapshot, então cálculo e rótulos saem da mesma constante. Chegou a
+  ser ajustada para 4h e voltou para 5h depois de conferir o painel do `/usage`,
+  que a chama de "Session (5hr)". Como os blocos são encadeados, a duração errada
+  deslocava o início de todos os blocos seguintes: o bloco vigente aparecia com
+  1,3M tokens em vez de 67,4M, e o reset em 3h50 em vez de 49min.
 - **Bloco não era ancorado na hora cheia.** O servidor conta a janela a partir da
   hora cheia da primeira chamada; um bloco novo abre quando o anterior completa a
   duração ou quando esse mesmo tempo passa sem chamada.
@@ -110,6 +113,10 @@ Tabela de preços conferida contra o `costUSD` que o próprio Claude Code grava 
 Confirma os preços por modelo (Opus 5 em 5/25, Haiku 4.5 em 1/5) e os
 multiplicadores de cache (write 1h = 2,00× input, write 5m = 1,25× input,
 read = 0,10× input). O sufixo `[1m]` bateu com as mesmas taxas do modelo base.
+
+A janela do bloco foi conferida contra o painel do `/usage`: com 5h o bloco
+começa 12:00 e reseta 17:00, restando 49min às 16:10 — o painel reportava
+"Session (5hr) · Resets in 1h".
 
 ### Migração
 

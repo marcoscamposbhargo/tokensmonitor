@@ -14,9 +14,14 @@ const TIMELINE_MINUTES = 60;
 const DAILY_DAYS = 14;
 const PROJECT_LIMIT = 10;
 const RECENT_MAX = 60;
-// Duração da janela de limite que o `/usage` reporta. Vai junto no snapshot para
-// os rótulos da interface não descolarem da constante.
-const BLOCK_HOURS = 4;
+// Duração da janela de limite que o `/usage` reporta — ele a chama de
+// "Session (5hr)". Vai junto no snapshot para os rótulos da interface não
+// descolarem da constante.
+//
+// O valor não é cosmético: a janela é encadeada, ou seja, cada bloco começa onde
+// o anterior terminou. Errar a duração desloca o início de todos os blocos
+// seguintes e o total sai completamente fora.
+const BLOCK_HOURS = 5;
 const BLOCK_MS = BLOCK_HOURS * 60 * 60 * 1000;
 // Uma sessão conta como "ativa" se recebeu tokens nos últimos 5 minutos.
 const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
