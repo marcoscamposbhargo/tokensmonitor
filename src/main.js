@@ -10,6 +10,10 @@ let win = null;
 const watcher = new TokenWatcher();
 const tracker = new AlertTracker();
 
+// No Windows o .ico carrega todos os tamanhos de uma vez, então a barra de
+// tarefas e o Alt+Tab pegam a versão certa sem reescalar.
+const ICON = path.join(__dirname, '..', 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+
 function createWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   win = new BrowserWindow({
@@ -17,6 +21,7 @@ function createWindow() {
     height: 640,
     x: width - 420,
     y: 40,
+    icon: ICON,
     frame: false,
     resizable: true,
     alwaysOnTop: true,
@@ -49,6 +54,7 @@ function notify(alert) {
   if (!cfg.notify || !Notification.isSupported()) return;
   const over = alert.level === 'over';
   new Notification({
+    icon: ICON,
     title: over ? '⚠️ Limite estourado' : '⏳ Perto do limite',
     body: `${alert.label}: ${fmtValue(alert.value, alert.unit)} de ${fmtValue(alert.limit, alert.unit)}`,
     urgency: over ? 'critical' : 'normal',

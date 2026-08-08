@@ -167,6 +167,7 @@ dos transcripts.
 
 ```
 CHANGELOG.md      historico de mudanças, com a validação da tabela de preços
+assets/           ícone do app (.ico para Windows, PNG de 16 a 512)
 src/watcher.js    leitura incremental dos .jsonl, agregação e janelas de uso
 src/pricing.js    tabela de preços por versão de modelo e cálculo de custo
 src/time.js       chaves de dia/minuto/hora compartilhadas

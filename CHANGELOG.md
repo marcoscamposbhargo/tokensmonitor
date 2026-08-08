@@ -56,6 +56,15 @@ Revisão de precisão das métricas e redesenho do painel.
   `requestId`. A mesma chamada reaparece quando uma sessão é retomada e o
   arquivo é copiado.
 
+### Adicionado — identidade
+
+- **Ícone do app** em `assets/`: mostrador circular aberto embaixo, preenchido
+  em azul `#58A6FF` sobre trilho escuro, com barras ascendentes ao centro e a
+  ponta da maior em verde `#3FB950`. A forma é a mesma leitura do painel — cota
+  parcial de um bloco, com consumo subindo.
+  Gerado em `.ico` multi-tamanho (16 a 256) para o Windows e PNG de 16 a 512;
+  usado na janela, na barra de tarefas e nas notificações.
+
 ### Alterado — interface
 
 - Bloco de 4h virou o destaque do topo, no lugar dos quatro cartões iguais.
