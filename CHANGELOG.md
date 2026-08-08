@@ -65,6 +65,13 @@ Revisão de precisão das métricas e redesenho do painel.
   Gerado em `.ico` multi-tamanho (16 a 256) para o Windows e PNG de 16 a 512;
   usado na janela, na barra de tarefas, nas notificações e na barra de título do
   próprio painel, onde o ponto de atividade virou um badge no canto do ícone.
+- **README com cabeçalho de marca**: ícone centralizado, título, resumo e
+  atalhos para o changelog, a calibração e a seção de custos. O ladrilho é
+  escuro com os cantos transparentes, então funciona nos dois temas do GitHub.
+- **Screenshot do painel** em `assets/screenshot.png`, capturado em 2x da janela
+  real rodando com o mesmo watcher, config e alerts do app. O script de captura
+  ficou fora do projeto de propósito — o app não precisa carregar código de
+  screenshot.
 
 ### Alterado — interface
 
