@@ -15,6 +15,10 @@
   <a href="#sobre-os-custos">Custos</a>
 </p>
 
+<p align="center">
+  <img src="assets/screenshot.png" width="400" alt="O painel: bloco de 4h em destaque, cartões de hoje, sessão e ritmo, composição de tokens e gráfico da última hora" />
+</p>
+
 ## Rodar
 
 Duplo clique em `Iniciar Monitor.bat`, ou pelo terminal:
@@ -177,7 +181,7 @@ dos transcripts.
 
 ```
 CHANGELOG.md      historico de mudanças, com a validação da tabela de preços
-assets/           ícone do app (.ico para Windows, PNG de 16 a 512)
+assets/           ícone do app (.ico para Windows, PNG de 16 a 512) e screenshot
 src/watcher.js    leitura incremental dos .jsonl, agregação e janelas de uso
 src/pricing.js    tabela de preços por versão de modelo e cálculo de custo
 src/time.js       chaves de dia/minuto/hora compartilhadas
