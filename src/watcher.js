@@ -14,7 +14,10 @@ const TIMELINE_MINUTES = 60;
 const DAILY_DAYS = 14;
 const PROJECT_LIMIT = 10;
 const RECENT_MAX = 60;
-const BLOCK_MS = 5 * 60 * 60 * 1000;
+// Duração da janela de limite que o `/usage` reporta. Vai junto no snapshot para
+// os rótulos da interface não descolarem da constante.
+const BLOCK_HOURS = 4;
+const BLOCK_MS = BLOCK_HOURS * 60 * 60 * 1000;
 // Uma sessão conta como "ativa" se recebeu tokens nos últimos 5 minutos.
 const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
 // Minutos além disso não alimentam nenhuma janela e só ocupam memória.
@@ -334,14 +337,21 @@ class TokenWatcher extends EventEmitter {
   }
 
   /**
-   * Reproduz as janelas que o `/usage` usa: um bloco de 5 horas ancorado na hora
-   * cheia da primeira chamada, e a janela dos últimos 7 dias.
+   * Reproduz as janelas que o `/usage` usa: o bloco de `BLOCK_HOURS` horas
+   * ancorado na hora cheia da primeira chamada, e a janela dos últimos 7 dias.
    * As porcentagens de limite do plano vêm do servidor e não existem aqui, então
    * só o consumo absoluto é calculado.
    */
   usageWindows(now) {
     const blockStart = this.currentBlockStart(now);
-    const block = { tokens: 0, cost: 0, messages: 0, start: blockStart, active: blockStart !== null };
+    const block = {
+      hours: BLOCK_HOURS,
+      tokens: 0,
+      cost: 0,
+      messages: 0,
+      start: blockStart,
+      active: blockStart !== null,
+    };
     if (blockStart !== null) {
       const end = blockStart + BLOCK_MS;
       for (const [t, m] of this.minutes) {
@@ -389,9 +399,9 @@ class TokenWatcher extends EventEmitter {
   }
 
   /**
-   * Início do bloco de 5h vigente, ancorado na hora cheia — é assim que o
-   * servidor conta a janela. Um bloco novo começa quando o anterior completa 5h
-   * ou quando há mais de 5h sem nenhuma chamada.
+   * Início do bloco vigente, ancorado na hora cheia — é assim que o servidor
+   * conta a janela. Um bloco novo começa quando o anterior completa a duração
+   * cheia ou quando esse mesmo tempo passa sem nenhuma chamada.
    * Devolve null quando o último bloco já expirou (nenhum bloco aberto agora).
    */
   currentBlockStart(now) {

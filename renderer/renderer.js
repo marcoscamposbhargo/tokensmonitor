@@ -268,7 +268,7 @@ function renderUsage(data) {
   let html = b.active
     ? `<div class="uwin">
         <div class="uwin-head">
-          <span>Bloco de 5h</span>
+          <span>Bloco de ${b.hours}h</span>
           <span class="uwin-reset">reseta em ${dur(b.resetIn)} · ${hhmm(b.resetAt)}</span>
         </div>
         <div class="uwin-val">${fmt(b.tokens)} tokens <small>${usd(b.cost)}</small></div>
@@ -276,7 +276,7 @@ function renderUsage(data) {
         <div class="uwin-note">iniciado ${hhmm(b.start)} · ${blockPct.toFixed(0)}% do tempo · ritmo ${fmt(b.burnRate)} tok/min</div>
       </div>`
     : `<div class="uwin">
-        <div class="uwin-head"><span>Bloco de 5h</span></div>
+        <div class="uwin-head"><span>Bloco de ${b.hours}h</span></div>
         <div class="uwin-val">—</div>
         <div class="uwin-note">nenhum bloco aberto; começa na próxima chamada</div>
       </div>`;
@@ -360,6 +360,7 @@ function renderConfig(cfg) {
 function renderHero(data) {
   const b = data.usage.block;
   const hero = el('hero');
+  el('hero-title').textContent = `Bloco de ${b.hours}h`;
   hero.classList.toggle('idle', !b.active);
   if (!b.active) {
     el('hero-reset').textContent = 'inativo';
@@ -493,7 +494,7 @@ setInterval(() => {
   const b = last.usage.block;
   if (b.active) {
     b.resetIn = Math.max(0, b.resetAt - last.now);
-    b.elapsed = Math.min(1, 1 - b.resetIn / (5 * 3600000));
+    b.elapsed = Math.min(1, 1 - b.resetIn / (b.hours * 3600000));
     renderHero(last);
   }
   if (tab === 'live' || tab === 'usage' || deltaFlash.size > 0) renderList(last);

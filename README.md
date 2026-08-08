@@ -32,9 +32,13 @@ arquivo novo. Entradas `<synthetic>` e respostas marcadas com
 
 ## O painel
 
-**Bloco de 5h (destaque do topo)** — a janela que de fato limita o uso: tokens
+**Bloco de 4h (destaque do topo)** — a janela que de fato limita o uso: tokens
 consumidos, custo, quanto do tempo já passou, ritmo em tokens/min e a projeção
 para o fim do bloco mantendo esse ritmo.
+
+A duração vem de `BLOCK_HOURS` em `src/watcher.js` e viaja junto com os dados,
+então trocar essa constante já ajusta o cálculo e todos os rótulos. Se o seu
+`/usage` reportar outra janela, é a única linha a mudar.
 
 **Cartões** — Hoje, Sessão (a de atividade mais recente) e Ritmo (média de
 tokens/min dos últimos 5 minutos fechados, com a estimativa de custo por hora).
@@ -62,10 +66,10 @@ O ponto ao lado do título pulsa quando existe sessão ativa (com tokens nos
 
 Reproduz o formato do `/usage` com os dados locais:
 
-- **Bloco de 5h** — tokens consumidos no bloco vigente, quanto falta para o reset
+- **Bloco de 4h** — tokens consumidos no bloco vigente, quanto falta para o reset
   e quanto do tempo já passou. O bloco é ancorado na **hora cheia** da primeira
-  chamada e dura 5 horas; um bloco novo começa quando o anterior completa 5h ou
-  quando passam mais de 5h sem nenhuma chamada.
+  chamada; um bloco novo começa quando o anterior completa as 4h ou quando passam
+  mais de 4h sem nenhuma chamada.
 - **Últimos 7 dias** — os 7 dias corridos até hoje, com a fatia de cada modelo
 - **Consumo diário** — barra por dia nos últimos 14 dias, com hoje destacado
 
