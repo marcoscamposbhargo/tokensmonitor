@@ -3,6 +3,8 @@
 Janela flutuante que acompanha, em tempo real, o consumo de tokens do Claude Code
 em todas as sessões e projetos da máquina.
 
+Histórico de mudanças em [CHANGELOG.md](CHANGELOG.md).
+
 ## Rodar
 
 Duplo clique em `Iniciar Monitor.bat`, ou pelo terminal:
@@ -164,6 +166,7 @@ dos transcripts.
 ## Arquivos
 
 ```
+CHANGELOG.md      historico de mudanças, com a validação da tabela de preços
 src/watcher.js    leitura incremental dos .jsonl, agregação e janelas de uso
 src/pricing.js    tabela de preços por versão de modelo e cálculo de custo
 src/time.js       chaves de dia/minuto/hora compartilhadas
