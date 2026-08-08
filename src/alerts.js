@@ -14,6 +14,7 @@ function candidates(snapshot, config) {
   // no meio da tarde em vez de na virada do dia.
   const day = dayKey(snapshot.now);
   const cur = snapshot.current;
+  const block = snapshot.usage && snapshot.usage.block;
   const list = [
     {
       scope: 'dailyTokens',
@@ -32,6 +33,17 @@ function candidates(snapshot, config) {
       limit: config.dailyLimit,
     },
   ];
+  if (block && block.active) {
+    list.push({
+      scope: 'blockTokens',
+      unit: 'tokens',
+      // A chave carrega o início do bloco: cada bloco novo rearma o alerta.
+      key: `block:${block.start}`,
+      label: `Tokens do bloco de ${block.hours}h`,
+      value: block.tokens,
+      limit: config.blockTokenLimit,
+    });
+  }
   if (cur) {
     list.push(
       {
@@ -105,8 +117,8 @@ function status(snapshot, config) {
       level: AlertTracker.level(c.value, c.limit, config.warnAt),
     };
   }
-  // Sessão ausente: mantém as chaves para a interface não quebrar.
-  for (const k of ['sessionTokens', 'session']) {
+  // Sessão ou bloco ausente: mantém as chaves para a interface não quebrar.
+  for (const k of ['sessionTokens', 'session', 'blockTokens']) {
     if (!out[k]) out[k] = { unit: k === 'session' ? 'usd' : 'tokens', value: 0, limit: 0, level: 'ok' };
   }
   return out;

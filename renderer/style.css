@@ -248,6 +248,30 @@ main::-webkit-scrollbar-thumb:hover {
   opacity: 0.75;
 }
 
+.hero.warn {
+  border-color: rgba(227, 179, 65, 0.5);
+}
+
+.hero.warn .hero-value {
+  color: var(--warn);
+}
+
+.hero.warn .track.lg > span {
+  background: var(--warn);
+}
+
+.hero.over {
+  border-color: rgba(255, 107, 100, 0.6);
+}
+
+.hero.over .hero-value {
+  color: var(--danger);
+}
+
+.hero.over .track.lg > span {
+  background: var(--danger);
+}
+
 .hero-head {
   display: flex;
   align-items: baseline;
@@ -834,6 +858,12 @@ canvas {
   font-size: 9.5px;
   color: var(--faint);
   line-height: 1.4;
+}
+
+.settings .hint code {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  color: var(--muted);
 }
 
 /* Rodapé ----------------------------------------------------------------- */

@@ -73,16 +73,30 @@ Reproduz o formato do `/usage` com os dados locais:
 - **Últimos 7 dias** — os 7 dias corridos até hoje, com a fatia de cada modelo
 - **Consumo diário** — barra por dia nos últimos 14 dias, com hoje destacado
 
-**Limitação:** o `/usage` real mostra a **porcentagem do limite do seu plano**.
-Esse número vem do servidor da Anthropic e não existe em nenhum arquivo local,
-então aqui só aparece o consumo absoluto. As janelas de tempo são as mesmas; a
-régua do plano não.
+## Porcentagem do limite (calibração)
+
+O `/usage` mostra a **porcentagem do limite do seu plano**. Esse número vem do
+servidor da Anthropic e não existe em nenhum arquivo local — mas ele é só o
+consumo do bloco dividido pelo limite, e o consumo já é medido aqui. Então basta
+informar a porcentagem uma vez para o limite ficar conhecido:
+
+1. rode `/usage` no Claude Code e veja a porcentagem do bloco
+2. abra as preferências do monitor e digite esse número em **% que o /usage
+   mostra agora**
+3. o limite deduzido aparece em **Limite do bloco (M)** e fica salvo
+
+A partir daí o destaque do topo mostra a porcentagem no lugar do total, colorida
+em amarelo no aviso e vermelha ao estourar, com a projeção de onde o bloco
+termina no ritmo atual. A calibração é uma estimativa: o servidor pondera o
+limite por modelo, então recalibre se o número começar a divergir do `/usage`.
 
 ## Alertas
 
 Todos os limites vêm **desligados** por padrão. Abra as preferências pelo ícone
 de controles na barra do topo para definir:
 
+- **Limite do bloco** (em milhões) — preenchido pela calibração acima; é o alerta
+  que corresponde ao que o `/usage` reporta
 - **Tokens/dia** e **Tokens/sessão** (em milhões) — a métrica que vale em plano
   de assinatura
 - **Custo/dia** e **Custo/sessão** (USD) — só faz sentido se você usa API paga

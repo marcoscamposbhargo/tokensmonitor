@@ -49,6 +49,7 @@ const hhmm = (ts) => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit',
 /* ---------- limites ---------- */
 
 const SCOPES = [
+  { key: 'blockTokens', title: 'tokens/bloco', unit: 'tokens' },
   { key: 'dailyTokens', title: 'tokens/dia', unit: 'tokens' },
   { key: 'sessionTokens', title: 'tokens/sessão', unit: 'tokens' },
   { key: 'daily', title: 'custo/dia', unit: 'usd' },
@@ -61,7 +62,9 @@ const activeAlerts = (data) =>
   SCOPES.map((s) => ({ ...s, ...data.alerts[s.key] })).filter((a) => a.limit > 0);
 
 function renderLimits(data) {
-  const rows = activeAlerts(data);
+  // O bloco já tem a barra do destaque no topo; repetir aqui seria a mesma
+  // informação duas vezes na mesma tela.
+  const rows = activeAlerts(data).filter((a) => a.key !== 'blockTokens');
   el('limits').innerHTML = rows
     .map((a) => {
       const pct = Math.min(100, (a.value / a.limit) * 100);
@@ -348,6 +351,7 @@ function trackDeltas(data) {
 }
 
 function renderConfig(cfg) {
+  el('in-block-tok').value = cfg.blockTokenLimit / 1e6;
   el('in-daily-tok').value = cfg.dailyTokenLimit / 1e6;
   el('in-session-tok').value = cfg.sessionTokenLimit / 1e6;
   el('in-daily').value = cfg.dailyLimit;
@@ -360,23 +364,44 @@ function renderConfig(cfg) {
 function renderHero(data) {
   const b = data.usage.block;
   const hero = el('hero');
+  const limit = (data.config && data.config.blockTokenLimit) || 0;
   el('hero-title').textContent = `Bloco de ${b.hours}h`;
   hero.classList.toggle('idle', !b.active);
+  hero.classList.remove('warn', 'over');
+
   if (!b.active) {
     el('hero-reset').textContent = 'inativo';
     el('hero-tokens').textContent = '—';
+    el('hero-unit').textContent = '';
     el('hero-cost').textContent = '';
     el('hero-track').style.width = '0%';
     el('hero-note').textContent = 'nenhum bloco aberto; começa na próxima chamada';
     el('hero-proj').textContent = '';
     return;
   }
+
   el('hero-reset').textContent = `reseta em ${dur(b.resetIn)}`;
-  el('hero-tokens').textContent = fmt(b.tokens);
   el('hero-cost').textContent = usd(b.cost);
+
+  if (limit > 0) {
+    // Com o limite calibrado a métrica principal vira a mesma do `/usage`.
+    const pct = (b.tokens / limit) * 100;
+    const level = (data.alerts.blockTokens && data.alerts.blockTokens.level) || 'ok';
+    if (level !== 'ok') hero.classList.add(level);
+    el('hero-tokens').textContent = pct.toFixed(pct < 10 ? 1 : 0) + '%';
+    el('hero-unit').textContent = 'do limite';
+    el('hero-track').style.width = Math.min(100, pct).toFixed(1) + '%';
+    el('hero-note').textContent = `${fmt(b.tokens)} de ${fmt(limit)} · ${fmt(b.burnRate)} tok/min`;
+    // Projeção só faz sentido depois que o bloco andou o bastante para ter média.
+    el('hero-proj').textContent =
+      b.elapsed > 0.08 ? `projeção ${((b.projected / limit) * 100).toFixed(0)}% no reset` : '';
+    return;
+  }
+
+  el('hero-tokens').textContent = fmt(b.tokens);
+  el('hero-unit').textContent = 'tokens';
   el('hero-track').style.width = (b.elapsed * 100).toFixed(1) + '%';
   el('hero-note').textContent = `${hhmm(b.start)}–${hhmm(b.resetAt)} · ${fmt(b.burnRate)} tok/min`;
-  // Projeção só faz sentido depois que o bloco andou o bastante para ter média.
   el('hero-proj').textContent =
     b.elapsed > 0.08 ? `projeção ${fmt(b.projected)} · ${usd(b.projectedCost)}` : '';
 }
@@ -441,6 +466,7 @@ el('btn-cfg').addEventListener('click', (e) => {
 async function saveConfig() {
   renderConfig(
     await window.tokens.setConfig({
+      blockTokenLimit: (Number(el('in-block-tok').value) || 0) * 1e6,
       dailyTokenLimit: (Number(el('in-daily-tok').value) || 0) * 1e6,
       sessionTokenLimit: (Number(el('in-session-tok').value) || 0) * 1e6,
       dailyLimit: Number(el('in-daily').value) || 0,
@@ -452,9 +478,35 @@ async function saveConfig() {
   );
 }
 
-['in-daily-tok', 'in-session-tok', 'in-daily', 'in-session', 'in-warn', 'in-notify', 'in-sound'].forEach(
-  (id) => el(id).addEventListener('change', saveConfig)
-);
+[
+  'in-block-tok',
+  'in-daily-tok',
+  'in-session-tok',
+  'in-daily',
+  'in-session',
+  'in-warn',
+  'in-notify',
+  'in-sound',
+].forEach((id) => el(id).addEventListener('change', saveConfig));
+
+/**
+ * Calibração: o limite do plano não vem em nenhum arquivo local, mas a
+ * porcentagem que o `/usage` mostra é o consumo do bloco dividido por ele.
+ * Com o consumo já medido aqui, informar a porcentagem revela o limite.
+ */
+el('in-cal-pct').addEventListener('change', async () => {
+  const pct = Number(el('in-cal-pct').value);
+  const b = last && last.usage.block;
+  if (!(pct > 0) || !b || !b.active || b.tokens === 0) {
+    el('cal-hint').textContent =
+      'Precisa de um bloco aberto com consumo para calibrar. Rode uma chamada e tente de novo.';
+    return;
+  }
+  const limit = Math.round(b.tokens / (pct / 100));
+  el('in-block-tok').value = (limit / 1e6).toFixed(1);
+  await saveConfig();
+  el('cal-hint').textContent = `Calibrado: ${fmt(b.tokens)} equivalem a ${pct}%, então o limite do bloco é ~${fmt(limit)} tokens.`;
+});
 
 // Leitura ponto a ponto do gráfico — o painel é pequeno demais para tooltip.
 const chartEl = el('chart');

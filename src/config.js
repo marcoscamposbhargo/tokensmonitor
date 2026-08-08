@@ -11,6 +11,10 @@ const DEFAULTS = {
   // Limites em tokens (soma de input + output + cache). 0 desliga.
   dailyTokenLimit: 0,
   sessionTokenLimit: 0,
+  // Tokens que cabem em um bloco antes de bater o limite do plano. O valor não
+  // existe em arquivo nenhum: é deduzido comparando o consumo do bloco atual com
+  // a porcentagem que o `/usage` mostra (ver calibração no renderer).
+  blockTokenLimit: 0,
   // Fração do limite que dispara o aviso amarelo.
   warnAt: 0.8,
   notify: true,
@@ -39,7 +43,7 @@ function set(patch) {
   cache = { ...cache, ...patch };
   if (cache.warnAt < 0.1) cache.warnAt = 0.1;
   if (cache.warnAt > 1) cache.warnAt = 1;
-  for (const k of ['dailyLimit', 'sessionLimit', 'dailyTokenLimit', 'sessionTokenLimit']) {
+  for (const k of ['dailyLimit', 'sessionLimit', 'dailyTokenLimit', 'sessionTokenLimit', 'blockTokenLimit']) {
     if (!(cache[k] > 0)) cache[k] = 0;
   }
   if (filePath) {

@@ -58,6 +58,19 @@
 
       <section id="settings" class="settings hidden" aria-label="Preferências">
         <div class="settings-group">
+          <span class="group-title">Bloco</span>
+          <label for="in-cal-pct"><span>% que o /usage mostra agora</span>
+            <input type="number" id="in-cal-pct" min="1" max="100" step="1" placeholder="ex. 7" />
+          </label>
+          <label for="in-block-tok"><span>Limite do bloco (M)</span>
+            <input type="number" id="in-block-tok" min="0" step="1" />
+          </label>
+          <p class="hint" id="cal-hint">
+            O limite do plano não existe em arquivo local. Digite a porcentagem do
+            <code>/usage</code> e o limite é deduzido do consumo do bloco atual.
+          </p>
+        </div>
+        <div class="settings-group">
           <span class="group-title">Limites de tokens</span>
           <label for="in-daily-tok"><span>Por dia (M)</span>
             <input type="number" id="in-daily-tok" min="0" step="1" />
@@ -98,7 +111,7 @@
         </div>
         <div class="hero-main">
           <span class="hero-value" id="hero-tokens">—</span>
-          <span class="hero-unit">tokens</span>
+          <span class="hero-unit" id="hero-unit">tokens</span>
           <span class="hero-cost" id="hero-cost">—</span>
         </div>
         <div class="track lg"><span id="hero-track"></span></div>
