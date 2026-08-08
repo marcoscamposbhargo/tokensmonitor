@@ -52,7 +52,14 @@ Revisão de precisão das métricas e redesenho do painel.
   modelo, e o custo estimado já embute esse peso. Os mesmos 5M de tokens entram
   como 7,5% em Opus 5, 4,5% em Sonnet 5 e 1,5% em Haiku 4.5 — trocar de modelo se
   corrige sozinho, sem recalibrar.
-- **Alerta de escopo `blockCost`**, rearmado a cada bloco novo.
+- **Janelas semanais com cota**, calibradas do mesmo jeito que o bloco: a geral
+  dos 7 dias e a do **Fable**, que o `/usage` reporta com cota própria.
+- **Distribuição por tamanho de contexto nas últimas 24h**, ponderada por custo —
+  a mesma leitura do "% of your usage was at >150k context" do `/usage`. O
+  tamanho do contexto é `input + cache lido + cache escrito`; o output não conta,
+  porque é o que saiu e não o que foi carregado.
+- **Alertas de escopo `blockCost`, `weekCost` e `weekFableCost`**, cada um
+  rearmado quando a sua janela vira.
 - **Ritmo e projeção do bloco** — tokens/min e onde o bloco fecha mantendo o
   ritmo atual.
 - **Deduplicação estável entre cópias de transcript**, por `message.id` +
@@ -117,6 +124,10 @@ read = 0,10× input). O sufixo `[1m]` bateu com as mesmas taxas do modelo base.
 A janela do bloco foi conferida contra o painel do `/usage`: com 5h o bloco
 começa 12:00 e reseta 17:00, restando 49min às 16:10 — o painel reportava
 "Session (5hr) · Resets in 1h".
+
+A distribuição por contexto também bateu de forma independente: o monitor
+calculou **72%** do consumo das últimas 24h em chamadas acima de 150k de
+contexto, contra o "72% of your usage was at >150k context" do `/usage`.
 
 ### Migração
 

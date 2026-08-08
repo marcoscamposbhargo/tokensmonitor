@@ -29,6 +29,27 @@ const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
 const MINUTE_RETENTION_MS = 30 * DAY_MS;
 // Acima disso o índice de deduplicação rotaciona (ver `remember`).
 const SEEN_MAX = 200000;
+// Faixas de tamanho de contexto, em tokens de prompt (input + cache lido +
+// cache escrito). O `/usage` destaca a faixa mais alta porque contexto grande
+// encarece cada chamada mesmo com cache.
+const CONTEXT_BUCKETS = [
+  { label: '< 50k', max: 50000 },
+  { label: '50k–150k', max: 150000 },
+  { label: '> 150k', max: Infinity },
+];
+const CONTEXT_WINDOW_MS = 24 * 3600000;
+
+function bucketOf(context) {
+  for (let i = 0; i < CONTEXT_BUCKETS.length; i++) {
+    if (context < CONTEXT_BUCKETS[i].max) return i;
+  }
+  return CONTEXT_BUCKETS.length - 1;
+}
+
+/** Fable tem cota semanal propria no `/usage`, separada da cota geral. */
+function isFable(model) {
+  return /fable/i.test(String(model || ''));
+}
 
 function emptyTotals() {
   return {
@@ -74,6 +95,8 @@ class TokenWatcher extends EventEmitter {
     this.seenOld = new Set();
     this.recent = []; // últimas chamadas lidas, para o feed ao vivo
     this.modelDays = new Map(); // `modelo|AAAA-MM-DD` -> { tokens, cost, messages, dayTs }
+    // horaTs -> [{ tokens, cost, messages }] por faixa de contexto
+    this.contextHours = new Map();
     this.totals = emptyTotals();
     this.skipped = 0; // entradas ignoradas por não terem preço (erro/sintéticas)
     this.timer = null;
@@ -282,6 +305,20 @@ class TokenWatcher extends EventEmitter {
 
     addTotals(this.totals, delta);
 
+    // Tamanho do contexto da chamada: tudo que entrou como prompt. O output não
+    // conta — ele é o que saiu, não o que foi carregado.
+    const context = delta.input + delta.cacheRead + delta.cacheWrite;
+    const hk = hourFloor(ts);
+    let hour = this.contextHours.get(hk);
+    if (!hour) {
+      hour = CONTEXT_BUCKETS.map(() => ({ tokens: 0, cost: 0, messages: 0 }));
+      this.contextHours.set(hk, hour);
+    }
+    const slot = hour[bucketOf(context)];
+    slot.tokens += tokens;
+    slot.cost += delta.cost;
+    slot.messages += 1;
+
     const mk = minuteKey(ts);
     const minute = this.minutes.get(mk);
     if (minute) {
@@ -330,6 +367,9 @@ class TokenWatcher extends EventEmitter {
       }
     }
     if (removed) this.minuteOrderDirty = true;
+    for (const t of this.contextHours.keys()) {
+      if (t < cutoff) this.contextHours.delete(t);
+    }
   }
 
   /** Chaves de minuto em ordem crescente, recalculadas só quando mudam. */
@@ -398,6 +438,17 @@ class TokenWatcher extends EventEmitter {
       perModel.set(md.model, agg);
     }
     week.byModel = [...perModel.values()].sort((a, b) => b.tokens - a.tokens);
+    // Fable tem cota semanal propria no `/usage`, entao vai separado.
+    week.fable = week.byModel
+      .filter((m) => isFable(m.name))
+      .reduce(
+        (a, m) => ({
+          tokens: a.tokens + m.tokens,
+          cost: a.cost + m.cost,
+          messages: a.messages + m.messages,
+        }),
+        { tokens: 0, cost: 0, messages: 0 }
+      );
     week.resetAt = null;
 
     return { block, week };
@@ -423,6 +474,35 @@ class TokenWatcher extends EventEmitter {
       prev = t;
     }
     return now < start + BLOCK_MS ? start : null;
+  }
+
+  /**
+   * Distribuição do consumo por tamanho de contexto nas últimas 24h, ponderada
+   * por custo — a mesma leitura do "% of your usage was at >150k context" do
+   * `/usage`. Ponderar por custo e não por chamadas é o que faz sentido: o que
+   * pesa no limite é quanto cada chamada consumiu, não quantas foram.
+   */
+  contextMix(now) {
+    const cutoff = now - CONTEXT_WINDOW_MS;
+    const rows = CONTEXT_BUCKETS.map((b) => ({
+      label: b.label,
+      tokens: 0,
+      cost: 0,
+      messages: 0,
+      share: 0,
+    }));
+    let total = 0;
+    for (const [t, hour] of this.contextHours) {
+      if (t < cutoff) continue;
+      hour.forEach((slot, i) => {
+        rows[i].tokens += slot.tokens;
+        rows[i].cost += slot.cost;
+        rows[i].messages += slot.messages;
+        total += slot.cost;
+      });
+    }
+    if (total > 0) for (const r of rows) r.share = r.cost / total;
+    return { rows, cost: total, hours: CONTEXT_WINDOW_MS / 3600000 };
   }
 
   snapshot() {
@@ -507,6 +587,7 @@ class TokenWatcher extends EventEmitter {
       othersProjects,
       recent: [...this.recent].sort((a, b) => b.ts - a.ts).slice(0, 25),
       usage: this.usageWindows(now),
+      context: this.contextMix(now),
       models: [...this.models.values()]
         .map((m) => ({
           name: m.name,

@@ -90,7 +90,14 @@ Reproduz o formato do `/usage` com os dados locais:
   chamada; um bloco novo começa quando o anterior completa as 5h ou quando passam
   mais de 5h sem nenhuma chamada. Conferido contra o `/usage`: bloco iniciado
   12:00, reset 17:00, "Resets in 1h" às 16:10.
-- **Últimos 7 dias** — os 7 dias corridos até hoje, com a fatia de cada modelo
+- **Últimos 7 dias** — os 7 dias corridos até hoje, com a fatia de cada modelo.
+  Com a cota calibrada, mostra a porcentagem igual ao bloco.
+- **Fable · 7 dias** — janela própria, porque o `/usage` reporta uma cota semanal
+  separada para o Fable. Só aparece quando há consumo de Fable na janela.
+- **Contexto · últimas 24h** — quanto do consumo veio de chamadas com contexto
+  pequeno, médio ou acima de 150k, ponderado por custo. É a mesma leitura do
+  "% of your usage was at >150k context" do `/usage`, e explica por que duas
+  sessões com o mesmo número de chamadas custam diferente.
 - **Consumo diário** — barra por dia nos últimos 14 dias, com hoje destacado
 
 ## Porcentagem do limite (calibração)
@@ -105,6 +112,9 @@ porcentagem uma vez para a cota ficar conhecida:
 2. abra as preferências do monitor e digite esse número em **% que o /usage
    mostra agora**
 3. a cota deduzida aparece em **Cota do bloco (USD equiv.)** e fica salva
+
+As duas janelas semanais têm a mesma calibração, no grupo **Semana**: a cota
+geral dos 7 dias e a do Fable, que o `/usage` reporta à parte.
 
 A partir daí o destaque do topo mostra a porcentagem no lugar do total, colorida
 em amarelo no aviso e vermelha ao estourar, com a projeção de onde o bloco

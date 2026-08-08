@@ -50,6 +50,8 @@ const hhmm = (ts) => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit',
 
 const SCOPES = [
   { key: 'blockCost', title: 'cota do bloco', unit: 'usd' },
+  { key: 'weekCost', title: 'cota da semana', unit: 'usd' },
+  { key: 'weekFableCost', title: 'cota Fable', unit: 'usd' },
   { key: 'dailyTokens', title: 'tokens/dia', unit: 'tokens' },
   { key: 'sessionTokens', title: 'tokens/sessão', unit: 'tokens' },
   { key: 'daily', title: 'custo/dia', unit: 'usd' },
@@ -62,9 +64,10 @@ const activeAlerts = (data) =>
   SCOPES.map((s) => ({ ...s, ...data.alerts[s.key] })).filter((a) => a.limit > 0);
 
 function renderLimits(data) {
-  // O bloco já tem a barra do destaque no topo; repetir aqui seria a mesma
-  // informação duas vezes na mesma tela.
-  const rows = activeAlerts(data).filter((a) => a.key !== 'blockCost');
+  // Bloco e semanas já têm barra própria (destaque do topo e aba Uso); repetir
+  // aqui seria a mesma informação duas vezes.
+  const own = new Set(['blockCost', 'weekCost', 'weekFableCost']);
+  const rows = activeAlerts(data).filter((a) => !own.has(a.key));
   el('limits').innerHTML = rows
     .map((a) => {
       const pct = Math.min(100, (a.value / a.limit) * 100);
@@ -262,6 +265,50 @@ function renderProjects(data) {
   return html;
 }
 
+/**
+ * Uma janela de 7 dias. Com cota calibrada mostra a porcentagem e a barra; sem
+ * cota, mostra o total absoluto — que é tudo que dá para saber sem calibrar.
+ */
+function window7(title, agg, limit, alert, { note }) {
+  const pct = limit > 0 ? (agg.cost / limit) * 100 : null;
+  const level = (alert && alert.level) || 'ok';
+  const head =
+    pct === null
+      ? `<span>${title}</span>`
+      : `<span>${title}</span><span class="uwin-reset${level !== 'ok' ? ' ' + level : ''}">${pct.toFixed(pct < 10 ? 1 : 0)}% da cota</span>`;
+  const track =
+    pct === null
+      ? ''
+      : `<div class="track${level !== 'ok' ? ' ' + level : ''}"><span style="width:${Math.min(100, pct).toFixed(1)}%"></span></div>`;
+  return `<div class="uwin">
+    <div class="uwin-head">${head}</div>
+    <div class="uwin-val">${fmt(agg.tokens)} tokens <small>${usd(agg.cost)}</small></div>
+    ${track}
+    <div class="uwin-note">${note}</div>
+  </div>`;
+}
+
+/**
+ * Distribuição por tamanho de contexto nas últimas 24h. Contexto grande é o que
+ * mais encarece cada chamada, então a leitura importa mesmo com cache.
+ */
+function renderContext(ctx) {
+  if (!ctx || ctx.cost === 0) return '';
+  let html = `<div class="usep">Contexto · últimas ${ctx.hours}h</div>`;
+  html += ctx.rows
+    .map((r) => {
+      const pct = r.share * 100;
+      return `<div class="uday">
+        <span class="uday-date">${r.label}</span>
+        <span class="uday-bar"><i style="width:${pct}%"></i></span>
+        <span class="uday-tok">${pct.toFixed(0)}%</span>
+        <span class="uday-cost">${r.cost > 0 ? usd(r.cost) : ''}</span>
+      </div>`;
+    })
+    .join('');
+  return html;
+}
+
 /** Mesmas janelas do `/usage`: bloco de 5h, semana e histórico diário. */
 function renderUsage(data) {
   const u = data.usage;
@@ -285,11 +332,17 @@ function renderUsage(data) {
       </div>`;
 
   const w = u.week;
-  html += `<div class="uwin">
-    <div class="uwin-head"><span>Últimos 7 dias</span></div>
-    <div class="uwin-val">${fmt(w.tokens)} tokens <small>${usd(w.cost)}</small></div>
-    <div class="uwin-note">${w.messages.toLocaleString('pt-BR')} chamadas · média ${fmt(w.tokens / 7)}/dia</div>
-  </div>`;
+  const cfg = data.config || {};
+  html += window7('Últimos 7 dias', w, cfg.weekCostLimit, data.alerts.weekCost, {
+    note: `${w.messages.toLocaleString('pt-BR')} chamadas · média ${fmt(w.tokens / 7)}/dia`,
+  });
+  // O Fable tem cota semanal separada no `/usage`, então aparece como janela
+  // própria em vez de virar só mais uma linha na divisão por modelo.
+  if (w.fable && w.fable.cost > 0) {
+    html += window7('Fable · 7 dias', w.fable, cfg.weekFableCostLimit, data.alerts.weekFableCost, {
+      note: `${w.fable.messages.toLocaleString('pt-BR')} chamadas · cota própria no /usage`,
+    });
+  }
 
   const wtotal = w.tokens || 1;
   html += w.byModel
@@ -304,6 +357,8 @@ function renderUsage(data) {
       );
     })
     .join('');
+
+  html += renderContext(data.context);
 
   const days = data.daily.slice().reverse();
   const dmax = Math.max(1, ...days.map((d) => d.tokens));
@@ -352,6 +407,8 @@ function trackDeltas(data) {
 
 function renderConfig(cfg) {
   el('in-block-cost').value = cfg.blockCostLimit ? cfg.blockCostLimit.toFixed(2) : 0;
+  el('in-week-cost').value = cfg.weekCostLimit ? cfg.weekCostLimit.toFixed(2) : 0;
+  el('in-week-fable-cost').value = cfg.weekFableCostLimit ? cfg.weekFableCostLimit.toFixed(2) : 0;
   el('in-daily-tok').value = cfg.dailyTokenLimit / 1e6;
   el('in-session-tok').value = cfg.sessionTokenLimit / 1e6;
   el('in-daily').value = cfg.dailyLimit;
@@ -468,6 +525,8 @@ async function saveConfig() {
   renderConfig(
     await window.tokens.setConfig({
       blockCostLimit: Number(el('in-block-cost').value) || 0,
+      weekCostLimit: Number(el('in-week-cost').value) || 0,
+      weekFableCostLimit: Number(el('in-week-fable-cost').value) || 0,
       dailyTokenLimit: (Number(el('in-daily-tok').value) || 0) * 1e6,
       sessionTokenLimit: (Number(el('in-session-tok').value) || 0) * 1e6,
       dailyLimit: Number(el('in-daily').value) || 0,
@@ -481,6 +540,8 @@ async function saveConfig() {
 
 [
   'in-block-cost',
+  'in-week-cost',
+  'in-week-fable-cost',
   'in-daily-tok',
   'in-session-tok',
   'in-daily',
@@ -510,6 +571,26 @@ el('in-cal-pct').addEventListener('change', async () => {
   await saveConfig();
   el('cal-hint').textContent = `Calibrado: ${usd(b.cost)} equivalem a ${pct}%, então a cota do bloco é ~${el('in-block-cost').value} em custo estimado. Trocar de modelo não exige recalibrar.`;
 });
+
+/** Mesma calibração, agora para as duas janelas de 7 dias. */
+function calibrateWeek(pctField, costField, pick) {
+  el(pctField).addEventListener('change', async () => {
+    const pct = Number(el(pctField).value);
+    const w = last && last.usage.week;
+    const value = w ? pick(w) : 0;
+    if (!(pct > 0) || !value) {
+      el('cal-week-hint').textContent =
+        'Precisa de consumo na janela para calibrar. Rode uma chamada e tente de novo.';
+      return;
+    }
+    el(costField).value = (value / (pct / 100)).toFixed(2);
+    await saveConfig();
+    el('cal-week-hint').textContent = `Calibrado: ${usd(value)} equivalem a ${pct}%, então a cota é ~${el(costField).value} em custo estimado.`;
+  });
+}
+
+calibrateWeek('in-cal-week', 'in-week-cost', (w) => w.cost);
+calibrateWeek('in-cal-week-fable', 'in-week-fable-cost', (w) => (w.fable ? w.fable.cost : 0));
 
 // Leitura ponto a ponto do gráfico — o painel é pequeno demais para tooltip.
 const chartEl = el('chart');

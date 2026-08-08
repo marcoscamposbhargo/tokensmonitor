@@ -15,6 +15,7 @@ function candidates(snapshot, config) {
   const day = dayKey(snapshot.now);
   const cur = snapshot.current;
   const block = snapshot.usage && snapshot.usage.block;
+  const week = snapshot.usage && snapshot.usage.week;
   const list = [
     {
       scope: 'dailyTokens',
@@ -44,6 +45,27 @@ function candidates(snapshot, config) {
       value: block.cost,
       limit: config.blockCostLimit,
     });
+  }
+  if (week) {
+    // A chave carrega o início da semana móvel: vira o dia, rearma o alerta.
+    list.push(
+      {
+        scope: 'weekCost',
+        unit: 'usd',
+        key: `week:${week.start}`,
+        label: 'Cota dos 7 dias',
+        value: week.cost,
+        limit: config.weekCostLimit,
+      },
+      {
+        scope: 'weekFableCost',
+        unit: 'usd',
+        key: `weekFable:${week.start}`,
+        label: 'Cota Fable dos 7 dias',
+        value: week.fable ? week.fable.cost : 0,
+        limit: config.weekFableCostLimit,
+      }
+    );
   }
   if (cur) {
     list.push(
@@ -119,7 +141,7 @@ function status(snapshot, config) {
     };
   }
   // Sessão ou bloco ausente: mantém as chaves para a interface não quebrar.
-  for (const k of ['sessionTokens', 'session', 'blockCost']) {
+  for (const k of ['sessionTokens', 'session', 'blockCost', 'weekCost', 'weekFableCost']) {
     if (!out[k]) {
       out[k] = { unit: k === 'sessionTokens' ? 'tokens' : 'usd', value: 0, limit: 0, level: 'ok' };
     }

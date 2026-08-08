@@ -678,6 +678,22 @@ canvas {
   color: var(--accent);
 }
 
+.uwin-reset.warn {
+  color: var(--warn);
+}
+
+.uwin-reset.over {
+  color: var(--danger);
+}
+
+.track.warn > span {
+  background: var(--warn);
+}
+
+.track.over > span {
+  background: var(--danger);
+}
+
 .uwin-val {
   font-size: 16px;
   font-weight: 600;

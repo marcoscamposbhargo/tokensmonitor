@@ -20,6 +20,10 @@ const DEFAULTS = {
   // embute esse peso, trocar de modelo no meio do bloco se corrige sozinho e a
   // calibração continua valendo.
   blockCostLimit: 0,
+  // Mesma ideia para as janelas semanais que o `/usage` reporta: a geral e a do
+  // Fable, que tem cota própria.
+  weekCostLimit: 0,
+  weekFableCostLimit: 0,
   // Fração do limite que dispara o aviso amarelo.
   warnAt: 0.8,
   notify: true,
@@ -48,7 +52,16 @@ function set(patch) {
   cache = { ...cache, ...patch };
   if (cache.warnAt < 0.1) cache.warnAt = 0.1;
   if (cache.warnAt > 1) cache.warnAt = 1;
-  for (const k of ['dailyLimit', 'sessionLimit', 'dailyTokenLimit', 'sessionTokenLimit', 'blockCostLimit']) {
+  const limits = [
+    'dailyLimit',
+    'sessionLimit',
+    'dailyTokenLimit',
+    'sessionTokenLimit',
+    'blockCostLimit',
+    'weekCostLimit',
+    'weekFableCostLimit',
+  ];
+  for (const k of limits) {
     if (!(cache[k] > 0)) cache[k] = 0;
   }
   if (filePath) {

@@ -79,6 +79,25 @@
           </p>
         </div>
         <div class="settings-group">
+          <span class="group-title">Semana</span>
+          <label for="in-cal-week"><span>% semanal no /usage</span>
+            <input type="number" id="in-cal-week" min="1" max="100" step="1" placeholder="ex. 10" />
+          </label>
+          <label for="in-week-cost"><span>Cota da semana (USD equiv.)</span>
+            <input type="number" id="in-week-cost" min="0" step="1" />
+          </label>
+          <label for="in-cal-week-fable"><span>% semanal Fable</span>
+            <input type="number" id="in-cal-week-fable" min="1" max="100" step="1" placeholder="ex. 6" />
+          </label>
+          <label for="in-week-fable-cost"><span>Cota Fable (USD equiv.)</span>
+            <input type="number" id="in-week-fable-cost" min="0" step="1" />
+          </label>
+          <p class="hint" id="cal-week-hint">
+            Mesma calibração das janelas de 7 dias. O Fable tem cota própria no
+            <code>/usage</code>, então é medido à parte.
+          </p>
+        </div>
+        <div class="settings-group">
           <span class="group-title">Limites de tokens</span>
           <label for="in-daily-tok"><span>Por dia (M)</span>
             <input type="number" id="in-daily-tok" min="0" step="1" />
