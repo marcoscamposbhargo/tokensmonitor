@@ -21,33 +21,39 @@ O Claude Code grava um arquivo `.jsonl` por sessão em
 carrega um bloco `usage` com `input_tokens`, `output_tokens`,
 `cache_creation_input_tokens` e `cache_read_input_tokens`.
 
-O monitor faz um scan inicial de todos os arquivos (~2,5s para 450 MB) e depois,
+O monitor faz um scan inicial de todos os arquivos (~1,6s para 450 MB) e depois,
 a cada 1,5s, lê apenas os bytes novos de cada arquivo, guardando o offset de onde
-parou. Chamadas repetidas são descartadas pelo `requestId`. Nada sai da máquina.
+parou. Nada sai da máquina.
+
+Chamadas repetidas são descartadas por `message.id` + `requestId` — a mesma
+chamada reaparece quando uma sessão é retomada e o transcript é copiado para um
+arquivo novo. Entradas `<synthetic>` e respostas marcadas com
+`isApiErrorMessage` não têm chamada de API por trás e ficam de fora da contagem.
 
 ## O painel
 
-**Cartões do topo**
+**Bloco de 5h (destaque do topo)** — a janela que de fato limita o uso: tokens
+consumidos, custo, quanto do tempo já passou, ritmo em tokens/min e a projeção
+para o fim do bloco mantendo esse ritmo.
 
-- **Hoje** — tokens do dia corrente e custo estimado
-- **Sessão atual** — a sessão com atividade mais recente, e o projeto dela
-- **Taxa** — média de tokens/min dos últimos 5 minutos
-- **Modelo ativo** — modelo em uso agora e custo acumulado da sessão
+**Cartões** — Hoje, Sessão (a de atividade mais recente) e Ritmo (média de
+tokens/min dos últimos 5 minutos fechados, com a estimativa de custo por hora).
 
-**Barra de composição** — proporção entre input, output, cache write e cache
-read. Em uso normal o cache read domina; é o que mostra o quanto o contexto está
+**Barra de composição** — proporção entre input, output, cache escrito e cache
+lido. Em uso normal o cache lido domina; é o que mostra o quanto o contexto está
 sendo relido a cada chamada.
 
-**Gráfico** — tokens por minuto nos últimos 60 minutos, com o pico marcado.
+**Gráfico** — tokens por minuto nos últimos 60 minutos, com pico marcado e
+leitura por minuto ao passar o mouse.
 
-**Abas** (a lista rola dentro de si mesma; o painel de cima fica sempre visível)
+**Abas**
 
 - **Ao vivo** — últimas 8 chamadas, com idade, modelo, projeto e tokens. Menos de
   15s aparece em verde e a mais recente entra deslizando.
 - **Uso** — as mesmas janelas do `/usage` (detalhes abaixo)
 - **Modelos** — cada modelo com chamadas, tokens, participação e custo. Quando um
   modelo consome algo, um badge verde `+153.2k` aparece por 6 segundos.
-- **Projetos** — os 5 maiores por custo, o resto agrupado em uma linha
+- **Projetos** — os 6 maiores por custo, o resto agrupado em uma linha
 
 O ponto ao lado do título pulsa quando existe sessão ativa (com tokens nos
 últimos 5 minutos).
@@ -57,12 +63,11 @@ O ponto ao lado do título pulsa quando existe sessão ativa (com tokens nos
 Reproduz o formato do `/usage` com os dados locais:
 
 - **Bloco de 5h** — tokens consumidos no bloco vigente, quanto falta para o reset
-  e quanto do tempo já passou. Um bloco começa na primeira chamada e dura 5 horas
-  fixas; a chamada seguinte ao fim dele abre um bloco novo. Sem bloco aberto, o
-  painel avisa que ele começa na próxima chamada.
-- **Últimos 7 dias** — total da janela semanal, com a fatia de cada modelo
-- **Consumo diário** — barra por dia nos últimos 14 dias, com o dia de hoje
-  destacado em verde
+  e quanto do tempo já passou. O bloco é ancorado na **hora cheia** da primeira
+  chamada e dura 5 horas; um bloco novo começa quando o anterior completa 5h ou
+  quando passam mais de 5h sem nenhuma chamada.
+- **Últimos 7 dias** — os 7 dias corridos até hoje, com a fatia de cada modelo
+- **Consumo diário** — barra por dia nos últimos 14 dias, com hoje destacado
 
 **Limitação:** o `/usage` real mostra a **porcentagem do limite do seu plano**.
 Esse número vem do servidor da Anthropic e não existe em nenhum arquivo local,
@@ -71,7 +76,8 @@ régua do plano não.
 
 ## Alertas
 
-Todos os limites vêm **desligados** por padrão. Clique em ⚙ para definir:
+Todos os limites vêm **desligados** por padrão. Abra as preferências pelo ícone
+de controles na barra do topo para definir:
 
 - **Tokens/dia** e **Tokens/sessão** (em milhões) — a métrica que vale em plano
   de assinatura
@@ -83,34 +89,50 @@ Windows. Ao estourar 100%, tudo vira vermelho, vem notificação crítica e a ja
 pisca na barra de tarefas.
 
 Cada limite alerta **uma vez por nível** — sem repetir a cada 1,5s. O contador
-diário reinicia na virada do dia, e mudar um limite rearma o alerta na hora. `0`
-desliga. As configurações ficam em `%APPDATA%/token-monitor/config.json`.
+diário reinicia na virada do dia **no horário local**, e mudar um limite rearma o
+alerta na hora. `0` desliga. As configurações ficam em
+`%APPDATA%/token-monitor/config.json`.
 
 ## Sobre os custos
 
 São **estimativas** calculadas em `src/pricing.js` a partir do preço de tabela da
-API, em USD por milhão de tokens.
+API, em USD por milhão de tokens. Só input e output são tabelados; as taxas de
+cache são derivadas do preço de input, que é como a tabela oficial funciona:
+
+| Componente         | Taxa           |
+| ------------------ | -------------- |
+| cache write 5 min  | 1,25 × input   |
+| cache write 1 hora | 2,00 × input   |
+| cache read         | 0,10 × input   |
+
+A divisão entre cache de 5 min e de 1 hora vem do campo `usage.cache_creation`
+de cada chamada. Ela muda bastante a conta: em uso pesado o cache de 1 hora é a
+maior fatia, e cobrá-lo como se fosse de 5 min subestima o custo em ~60% desse
+componente.
+
+A tabela também é sensível à versão: Opus 4, 4.1 e 3 ficam na faixa antiga
+(15/75), e de Opus 4.5 em diante o preço é 5/25. Confira os valores em
+`src/pricing.js` antes de tratar o número como definitivo — ajustar é editar uma
+linha.
 
 Se você usa Claude Code por assinatura (Pro/Max), esse valor **não é o que você
 paga** — serve como referência de peso relativo entre modelos, projetos e dias.
 Para controle real de uso nesse caso, use os limites em tokens.
 
-O modelo `fable` está com preço de sonnet por falta de tabela pública. Entradas
-`<synthetic>` são mensagens geradas localmente pelo CLI, sem chamada de API, e
-por isso somam custo zero.
+O modelo `fable` está com preço de sonnet por falta de tabela pública.
 
 ## Controles
 
-- A barra do topo arrasta a janela
-- 📌 liga/desliga "sempre no topo" (ligado por padrão)
-- ⚙ abre os limites
-- 📁 abre a pasta dos transcripts
+A barra do topo arrasta a janela. Os botões à direita: preferências, "sempre no
+topo" (ligado por padrão), minimizar e fechar. No rodapé, o botão abre a pasta
+dos transcripts.
 
 ## Arquivos
 
 ```
 src/watcher.js    leitura incremental dos .jsonl, agregação e janelas de uso
-src/pricing.js    tabela de preços e cálculo de custo
+src/pricing.js    tabela de preços por versão de modelo e cálculo de custo
+src/time.js       chaves de dia/minuto/hora compartilhadas
 src/alerts.js     níveis de alerta e controle de disparo único por nível
 src/config.js     leitura/escrita das configurações
 src/main.js       processo principal do Electron, janela e notificações
@@ -118,5 +140,6 @@ src/preload.js    ponte IPC (contextIsolation ligado)
 renderer/         interface: HTML, CSS e JS puro, sem framework
 ```
 
-Sem dependências além do Electron. O renderer roda com `contextIsolation` ligado
-e `nodeIntegration` desligado — todo acesso a disco fica no processo principal.
+Sem dependências além do Electron. O renderer roda com `contextIsolation` ligado,
+`nodeIntegration` desligado e uma CSP que bloqueia qualquer carregamento externo —
+todo acesso a disco fica no processo principal.

@@ -6,6 +6,7 @@ const el = (id) => document.getElementById(id);
 const LIST_MAX = 8;
 let tab = 'live';
 let last = null;
+let hover = -1; // índice do minuto sob o cursor no gráfico, -1 = nenhum
 const prevModelTokens = new Map(); // modelo -> tokens na última renderização
 const deltaFlash = new Map(); // modelo -> { tokens, until }
 
@@ -16,7 +17,8 @@ const fmt = (n) => {
   return String(Math.round(n));
 };
 
-const usd = (n) => '$' + (n < 10 ? n.toFixed(2) : Math.round(n));
+// Abaixo de $10 os centavos importam; acima deles só poluem a coluna.
+const usd = (n) => '$' + (n < 10 ? n.toFixed(2) : Math.round(n).toLocaleString('pt-BR'));
 
 const sumTokens = (t) => t.input + t.output + t.cacheWrite + t.cacheRead;
 
@@ -26,6 +28,9 @@ const shortModel = (m) =>
     .replace(/^claude-/, '')
     .replace(/-\d{8}$/, '');
 
+const esc = (s) =>
+  String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
 function ago(ms) {
   if (ms < 60000) return Math.max(0, Math.round(ms / 1000)) + 's';
   if (ms < 3600000) return Math.round(ms / 60000) + 'min';
@@ -33,7 +38,15 @@ function ago(ms) {
   return Math.round(ms / 86400000) + 'd';
 }
 
-/* ---------- topo ---------- */
+function dur(ms) {
+  const h = Math.floor(ms / 3600000);
+  const m = Math.round((ms % 3600000) / 60000);
+  return h > 0 ? `${h}h ${m}min` : `${m}min`;
+}
+
+const hhmm = (ts) => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+/* ---------- limites ---------- */
 
 const SCOPES = [
   { key: 'dailyTokens', title: 'tokens/dia', unit: 'tokens' },
@@ -72,14 +85,16 @@ function renderBanner(data) {
     return;
   }
   banner.className = 'banner ' + worst.level;
-  banner.textContent = `${worst.level === 'over' ? '⚠️ Estourou' : '⏳ Perto do limite'}: ${worst.title} ${showValue(worst.value, worst.unit)} de ${showValue(worst.limit, worst.unit)}`;
+  banner.textContent = `${worst.level === 'over' ? 'Estourou' : 'Perto do limite'}: ${worst.title} — ${showValue(worst.value, worst.unit)} de ${showValue(worst.limit, worst.unit)}`;
 }
 
+/* ---------- composição ---------- */
+
 const SERIES = [
-  { key: 'input', label: 'input', color: '#58a6ff' },
-  { key: 'output', label: 'output', color: '#f778ba' },
-  { key: 'cacheWrite', label: 'cache write', color: '#d29922' },
-  { key: 'cacheRead', label: 'cache read', color: '#3fb950' },
+  { key: 'input', label: 'input', color: 'var(--s-input)' },
+  { key: 'output', label: 'output', color: 'var(--s-output)' },
+  { key: 'cacheWrite', label: 'cache escrito', color: 'var(--s-cwrite)' },
+  { key: 'cacheRead', label: 'cache lido', color: 'var(--s-cread)' },
 ];
 
 function renderBreakdown(totals) {
@@ -88,34 +103,89 @@ function renderBreakdown(totals) {
     (s) => `<span style="width:${((totals[s.key] / total) * 100).toFixed(2)}%;background:${s.color}"></span>`
   ).join('');
   el('legend').innerHTML = SERIES.map(
-    (s) => `<li><i style="background:${s.color}"></i>${s.label} ${fmt(totals[s.key])}</li>`
+    (s) =>
+      `<li><i style="background:${s.color}"></i>${s.label}<b>${fmt(totals[s.key])}</b></li>`
   ).join('');
 }
+
+/* ---------- gráfico ---------- */
+
+// Cores lidas do CSS uma vez: o canvas não entende var().
+const css = getComputedStyle(document.documentElement);
+const C = {
+  accent: css.getPropertyValue('--accent').trim() || '#58a6ff',
+  panel2: css.getPropertyValue('--panel-2').trim() || '#1b2432',
+  faint: css.getPropertyValue('--faint').trim() || '#6f7d90',
+  line: css.getPropertyValue('--line-soft').trim() || '#1e2734',
+  ok: css.getPropertyValue('--ok').trim() || '#3fb950',
+};
 
 function renderChart(timeline) {
   const canvas = el('chart');
   const ratio = window.devicePixelRatio || 1;
   const w = canvas.clientWidth;
-  const h = 70;
+  const h = 76;
+  if (!w) return;
   if (canvas.width !== Math.round(w * ratio)) {
-    canvas.width = w * ratio;
-    canvas.height = h * ratio;
+    canvas.width = Math.round(w * ratio);
+    canvas.height = Math.round(h * ratio);
   }
   const ctx = canvas.getContext('2d');
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, w, h);
 
+  const padTop = 12; // espaço para o rótulo do pico
+  const padBottom = 11; // espaço para os rótulos de tempo
+  const plot = h - padTop - padBottom;
   const max = Math.max(1, ...timeline.map((p) => p.tokens));
   const bw = w / timeline.length;
+
+  // Linha de base e meia-altura: dão escala sem competir com os dados.
+  ctx.strokeStyle = C.line;
+  ctx.lineWidth = 1;
+  for (const frac of [0, 0.5]) {
+    const y = Math.round(padTop + plot * frac) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+
   timeline.forEach((p, i) => {
-    const bh = p.tokens > 0 ? Math.max(1, (p.tokens / max) * (h - 2)) : 1;
-    ctx.fillStyle = p.tokens > 0 ? '#58a6ff' : '#1f2733';
-    ctx.fillRect(i * bw, h - bh, Math.max(1, bw - 1), bh);
+    const x = i * bw;
+    const isLast = i === timeline.length - 1;
+    if (p.tokens > 0) {
+      const bh = Math.max(1.5, (p.tokens / max) * plot);
+      const grad = ctx.createLinearGradient(0, padTop + plot - bh, 0, padTop + plot);
+      grad.addColorStop(0, isLast ? C.ok : C.accent);
+      grad.addColorStop(1, 'rgba(88,166,255,0.25)');
+      ctx.fillStyle = i === hover ? '#ffffff' : grad;
+      ctx.fillRect(x, padTop + plot - bh, Math.max(1, bw - 1), bh);
+    } else {
+      ctx.fillStyle = C.panel2;
+      ctx.fillRect(x, padTop + plot - 1.5, Math.max(1, bw - 1), 1.5);
+    }
   });
 
-  ctx.fillStyle = '#8b98a9';
-  ctx.font = '9px "Segoe UI", sans-serif';
-  ctx.fillText('pico ' + fmt(max), 4, 10);
+  ctx.fillStyle = C.faint;
+  ctx.font = '9px Inter, "Segoe UI", sans-serif';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('pico ' + fmt(max) + '/min', 0, 8);
+  ctx.fillText('-60 min', 0, h - 2);
+  ctx.textAlign = 'right';
+  ctx.fillText('agora', w, h - 2);
+  ctx.textAlign = 'left';
+}
+
+function chartReadout(data) {
+  const tl = data.timeline;
+  const p = hover >= 0 && hover < tl.length ? tl[hover] : null;
+  if (p) {
+    return `${hhmm(p.t)} · ${fmt(p.tokens)} tokens · ${usd(p.cost)}`;
+  }
+  const total = tl.reduce((a, b) => a + b.tokens, 0);
+  const cost = tl.reduce((a, b) => a + b.cost, 0);
+  return `${fmt(total)} tokens · ${usd(cost)} na hora`;
 }
 
 /* ---------- listas ---------- */
@@ -130,8 +200,8 @@ function renderLive(data) {
       const fresh = age < 15000;
       return `<div class="ev${fresh ? ' fresh' : ''}${i === 0 && fresh ? ' first' : ''}">
         <span class="ev-when">${ago(age)}</span>
-        <span class="ev-model">${shortModel(r.model)}</span>
-        <span class="ev-proj" title="${r.project}">${r.project}</span>
+        <span class="ev-model">${esc(shortModel(r.model))}</span>
+        <span class="ev-proj" title="${esc(r.project)}">${esc(r.project)}</span>
         <span class="ev-tok">+${fmt(r.tokens)}</span>
       </div>`;
     })
@@ -142,7 +212,7 @@ function bar(name, value, total, note, extraClass) {
   const pct = total > 0 ? (value / total) * 100 : 0;
   return `<div class="brow${extraClass || ''}">
     <div class="brow-top">
-      <span class="name" title="${name}">${name}</span>
+      <span class="name">${name}</span>
       <span class="val">${fmt(value)}</span>
     </div>
     <div class="track"><span style="width:${pct}%"></span></div>
@@ -154,13 +224,14 @@ function renderModels(data) {
   if (data.models.length === 0) return '<div class="empty">Sem dados</div>';
   const total = data.models.reduce((a, m) => a + sumTokens(m.totals), 0) || 1;
   return data.models
+    .slice(0, LIST_MAX)
     .map((m) => {
       const tk = sumTokens(m.totals);
       const flash = deltaFlash.get(m.name);
       const badge =
         flash && flash.until > Date.now() ? `<span class="delta">+${fmt(flash.tokens)}</span>` : '';
       const note = `${m.totals.messages.toLocaleString('pt-BR')} chamadas · ${((tk / total) * 100).toFixed(0)}% · ${usd(m.totals.cost)}`;
-      return bar(shortModel(m.name) + badge, tk, total, note, m.active ? ' active' : '');
+      return bar(esc(shortModel(m.name)) + badge, tk, total, note, m.active ? ' active' : '');
     })
     .join('');
 }
@@ -168,13 +239,13 @@ function renderModels(data) {
 function renderProjects(data) {
   if (data.projects.length === 0) return '<div class="empty">Sem dados</div>';
   const top = sumTokens(data.projects[0].totals) || 1;
-  const shown = data.projects.slice(0, 5);
-  const rest = data.projects.slice(5);
+  const shown = data.projects.slice(0, 6);
+  const rest = data.projects.slice(6);
   let html = shown
     .map((p) => {
       const tk = sumTokens(p.totals);
-      const active = Date.now() - p.lastTs < 5 * 60 * 1000;
-      return bar(p.name, tk, top, `${p.sessions} sessões · ${usd(p.totals.cost)}`, active ? ' active' : '');
+      const note = `${p.sessions} ${p.sessions === 1 ? 'sessão' : 'sessões'} · ${usd(p.totals.cost)} · ${ago(data.now - p.lastTs)} atrás`;
+      return bar(esc(p.name), tk, top, note, p.active ? ' active' : '');
     })
     .join('');
   const o = data.othersProjects || { count: 0, tokens: 0, cost: 0 };
@@ -188,17 +259,7 @@ function renderProjects(data) {
   return html;
 }
 
-function dur(ms) {
-  const h = Math.floor(ms / 3600000);
-  const m = Math.round((ms % 3600000) / 60000);
-  return h > 0 ? `${h}h ${m}min` : `${m}min`;
-}
-
-function hhmm(ts) {
-  return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-/** Mesmas janelas do /usage: bloco de 5h, semana e histórico diário. */
+/** Mesmas janelas do `/usage`: bloco de 5h, semana e histórico diário. */
 function renderUsage(data) {
   const u = data.usage;
   const b = u.block;
@@ -212,7 +273,7 @@ function renderUsage(data) {
         </div>
         <div class="uwin-val">${fmt(b.tokens)} tokens <small>${usd(b.cost)}</small></div>
         <div class="track"><span style="width:${blockPct}%"></span></div>
-        <div class="uwin-note">iniciado ${hhmm(b.start)} · ${blockPct.toFixed(0)}% do tempo decorrido</div>
+        <div class="uwin-note">iniciado ${hhmm(b.start)} · ${blockPct.toFixed(0)}% do tempo · ritmo ${fmt(b.burnRate)} tok/min</div>
       </div>`
     : `<div class="uwin">
         <div class="uwin-head"><span>Bloco de 5h</span></div>
@@ -224,6 +285,7 @@ function renderUsage(data) {
   html += `<div class="uwin">
     <div class="uwin-head"><span>Últimos 7 dias</span></div>
     <div class="uwin-val">${fmt(w.tokens)} tokens <small>${usd(w.cost)}</small></div>
+    <div class="uwin-note">${w.messages.toLocaleString('pt-BR')} chamadas · média ${fmt(w.tokens / 7)}/dia</div>
   </div>`;
 
   const wtotal = w.tokens || 1;
@@ -231,14 +293,12 @@ function renderUsage(data) {
     .slice(0, 4)
     .map((m) => {
       const pct = (m.tokens / wtotal) * 100;
-      return `<div class="brow">
-        <div class="brow-top">
-          <span class="name">${shortModel(m.name)}</span>
-          <span class="val">${fmt(m.tokens)}</span>
-        </div>
-        <div class="track"><span style="width:${pct}%"></span></div>
-        <div class="brow-note">${pct.toFixed(0)}% da semana · ${usd(m.cost)}</div>
-      </div>`;
+      return bar(
+        esc(shortModel(m.name)),
+        m.tokens,
+        wtotal,
+        `${pct.toFixed(0)}% da semana · ${usd(m.cost)}`
+      );
     })
     .join('');
 
@@ -297,43 +357,84 @@ function renderConfig(cfg) {
   el('in-sound').checked = !!cfg.sound;
 }
 
+function renderHero(data) {
+  const b = data.usage.block;
+  const hero = el('hero');
+  hero.classList.toggle('idle', !b.active);
+  if (!b.active) {
+    el('hero-reset').textContent = 'inativo';
+    el('hero-tokens').textContent = '—';
+    el('hero-cost').textContent = '';
+    el('hero-track').style.width = '0%';
+    el('hero-note').textContent = 'nenhum bloco aberto; começa na próxima chamada';
+    el('hero-proj').textContent = '';
+    return;
+  }
+  el('hero-reset').textContent = `reseta em ${dur(b.resetIn)}`;
+  el('hero-tokens').textContent = fmt(b.tokens);
+  el('hero-cost').textContent = usd(b.cost);
+  el('hero-track').style.width = (b.elapsed * 100).toFixed(1) + '%';
+  el('hero-note').textContent = `${hhmm(b.start)}–${hhmm(b.resetAt)} · ${fmt(b.burnRate)} tok/min`;
+  // Projeção só faz sentido depois que o bloco andou o bastante para ter média.
+  el('hero-proj').textContent =
+    b.elapsed > 0.08 ? `projeção ${fmt(b.projected)} · ${usd(b.projectedCost)}` : '';
+}
+
 function render(data) {
   last = data;
   trackDeltas(data);
 
   const cur = data.current;
+  const liveNow = !!(cur && cur.active);
+
   el('today-tokens').textContent = fmt(data.today.tokens);
-  el('today-cost').textContent = usd(data.today.cost) + ' estimado';
+  el('today-cost').textContent = usd(data.today.cost);
   el('cur-tokens').textContent = cur ? fmt(sumTokens(cur.totals)) : '—';
   el('cur-project').textContent = cur ? cur.project : 'nenhuma sessão';
   el('rate').textContent = fmt(data.rate);
-  el('cur-model').textContent = cur ? shortModel(cur.model) : '—';
-  el('cur-cost').textContent = cur ? usd(cur.totals.cost) + ' na sessão' : '—';
-  el('live-dot').classList.toggle('live', !!(cur && cur.active));
+  // Custo por hora no mesmo ritmo dos últimos 5 minutos fechados.
+  el('rate-sub').textContent = data.costRate > 0 ? `${usd(data.costRate * 60)}/h` : 'tok/min';
 
+  const dot = el('live-dot');
+  dot.classList.toggle('live', liveNow);
+  const chip = el('head-chip');
+  chip.classList.toggle('live', liveNow);
+  chip.textContent = liveNow ? `${shortModel(cur.model)} · ${fmt(data.rate)}/min` : 'ocioso';
+
+  el('mix-title').textContent = cur ? 'Composição da sessão' : 'Composição total';
+  el('mix-model').textContent = cur
+    ? `${shortModel(cur.model)} · ${usd(cur.totals.cost)}`
+    : `${usd(data.totals.cost)}`;
+
+  renderHero(data);
   renderBreakdown(cur ? cur.totals : data.totals);
   renderBanner(data);
   renderLimits(data);
   renderChart(data.timeline);
+  el('chart-readout').textContent = chartReadout(data);
   renderList(data);
 
-  el('footer-total').textContent = `${fmt(sumTokens(data.totals))} tokens · ${usd(data.totals.cost)} · ${data.totals.messages.toLocaleString('pt-BR')} chamadas`;
+  el('footer-total').textContent = `${fmt(sumTokens(data.totals))} tokens · ${usd(data.totals.cost)} · ${data.totals.messages.toLocaleString('pt-BR')} chamadas · ${data.sessionCount} sessões`;
 }
 
 /* ---------- eventos ---------- */
 
 document.querySelectorAll('.tabs button').forEach((btn) => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.tabs button').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.tabs button').forEach((b) => {
+      b.classList.remove('active');
+      b.setAttribute('aria-selected', 'false');
+    });
     btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
     tab = btn.dataset.tab;
     if (last) renderList(last);
   });
 });
 
 el('btn-cfg').addEventListener('click', (e) => {
-  const open = el('settings').classList.toggle('hidden');
-  e.currentTarget.classList.toggle('on', !open);
+  const open = !el('settings').classList.toggle('hidden');
+  e.currentTarget.classList.toggle('on', open);
 });
 
 async function saveConfig() {
@@ -354,22 +455,49 @@ async function saveConfig() {
   (id) => el(id).addEventListener('change', saveConfig)
 );
 
-// Relógio do feed: mantém "há Xs" correndo mesmo sem dados novos.
-setInterval(() => {
+// Leitura ponto a ponto do gráfico — o painel é pequeno demais para tooltip.
+const chartEl = el('chart');
+chartEl.addEventListener('mousemove', (e) => {
   if (!last) return;
-  last.now = Date.now();
-  if (tab === 'live' || tab === 'usage' || deltaFlash.size > 0) renderList(last);
-}, 1000);
+  const rect = chartEl.getBoundingClientRect();
+  const i = Math.floor(((e.clientX - rect.left) / rect.width) * last.timeline.length);
+  const clamped = Math.max(0, Math.min(last.timeline.length - 1, i));
+  if (clamped === hover) return;
+  hover = clamped;
+  renderChart(last.timeline);
+  el('chart-readout').textContent = chartReadout(last);
+});
+chartEl.addEventListener('mouseleave', () => {
+  if (hover === -1 || !last) return;
+  hover = -1;
+  renderChart(last.timeline);
+  el('chart-readout').textContent = chartReadout(last);
+});
 
 document.body.addEventListener('click', () => window.tokens.stopFlash());
 el('btn-close').addEventListener('click', () => window.tokens.close());
 el('btn-min').addEventListener('click', () => window.tokens.minimize());
 el('btn-open').addEventListener('click', () => window.tokens.openProjects());
 el('btn-pin').addEventListener('click', (e) => {
-  window.tokens.pin(e.currentTarget.classList.toggle('on'));
+  const on = e.currentTarget.classList.toggle('on');
+  e.currentTarget.setAttribute('aria-pressed', String(on));
+  window.tokens.pin(on);
 });
 
 window.addEventListener('resize', () => last && renderChart(last.timeline));
+
+// Relógio do feed: mantém "há Xs" e a contagem do reset correndo sem dados novos.
+setInterval(() => {
+  if (!last) return;
+  last.now = Date.now();
+  const b = last.usage.block;
+  if (b.active) {
+    b.resetIn = Math.max(0, b.resetAt - last.now);
+    b.elapsed = Math.min(1, 1 - b.resetIn / (5 * 3600000));
+    renderHero(last);
+  }
+  if (tab === 'live' || tab === 'usage' || deltaFlash.size > 0) renderList(last);
+}, 1000);
 
 window.tokens.onUpdate(render);
 window.tokens.snapshot().then((data) => {

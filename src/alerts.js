@@ -1,5 +1,7 @@
 'use strict';
 
+const { dayKey } = require('./time');
+
 const LEVELS = { ok: 0, warn: 1, over: 2 };
 
 function sumTokens(t) {
@@ -8,7 +10,9 @@ function sumTokens(t) {
 
 /** Descreve os quatro limites possíveis a partir do snapshot e da config. */
 function candidates(snapshot, config) {
-  const day = new Date(snapshot.now).toISOString().slice(0, 10);
+  // Mesmo dia local que o watcher usa para agregar — em UTC o alerta rearmaria
+  // no meio da tarde em vez de na virada do dia.
+  const day = dayKey(snapshot.now);
   const cur = snapshot.current;
   const list = [
     {

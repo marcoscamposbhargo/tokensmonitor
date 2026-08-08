@@ -5,7 +5,8 @@ const fsp = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { EventEmitter } = require('events');
-const { costOf } = require('./pricing');
+const { costOf, isBillable } = require('./pricing');
+const { dayKey, minuteKey, hourFloor, dayStart, DAY_MS } = require('./time');
 
 const PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 const POLL_MS = 1500;
@@ -16,28 +17,33 @@ const RECENT_MAX = 60;
 const BLOCK_MS = 5 * 60 * 60 * 1000;
 // Uma sessão conta como "ativa" se recebeu tokens nos últimos 5 minutos.
 const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
+// Minutos além disso não alimentam nenhuma janela e só ocupam memória.
+const MINUTE_RETENTION_MS = 30 * DAY_MS;
+// Acima disso o índice de deduplicação rotaciona (ver `remember`).
+const SEEN_MAX = 200000;
 
 function emptyTotals() {
-  return { input: 0, output: 0, cacheWrite: 0, cacheRead: 0, cost: 0, messages: 0 };
+  return {
+    input: 0,
+    output: 0,
+    cacheWrite: 0,
+    cacheWrite5m: 0,
+    cacheWrite1h: 0,
+    cacheRead: 0,
+    cost: 0,
+    messages: 0,
+  };
 }
 
 function addTotals(target, delta) {
   target.input += delta.input;
   target.output += delta.output;
   target.cacheWrite += delta.cacheWrite;
+  target.cacheWrite5m += delta.cacheWrite5m;
+  target.cacheWrite1h += delta.cacheWrite1h;
   target.cacheRead += delta.cacheRead;
   target.cost += delta.cost;
   target.messages += 1;
-}
-
-function dayKey(ts) {
-  const d = new Date(ts);
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-function minuteKey(ts) {
-  return Math.floor(ts / 60000) * 60000;
 }
 
 /**
@@ -52,14 +58,21 @@ class TokenWatcher extends EventEmitter {
     this.projects = new Map(); // projectName -> aggregate
     this.models = new Map(); // model -> aggregate
     this.minutes = new Map(); // minuteKey -> { tokens, cost }
-    this.days = new Map(); // dayKey -> { tokens, cost }
-    this.seen = new Set(); // requestIds já contabilizados
+    this.days = new Map(); // dayKey -> { tokens, cost, messages }
+    // Deduplicação em duas gerações: quando a atual enche, ela vira a antiga e
+    // uma nova começa vazia. Mantém memória limitada sem perder as chaves
+    // recentes, que são as únicas que podem reaparecer em sessões retomadas.
+    this.seen = new Set();
+    this.seenOld = new Set();
     this.recent = []; // últimas chamadas lidas, para o feed ao vivo
-    this.modelDays = new Map(); // `modelo|AAAA-MM-DD` -> { tokens, cost, messages }
+    this.modelDays = new Map(); // `modelo|AAAA-MM-DD` -> { tokens, cost, messages, dayTs }
     this.totals = emptyTotals();
+    this.skipped = 0; // entradas ignoradas por não terem preço (erro/sintéticas)
     this.timer = null;
     this.scanning = false;
     this.ready = false;
+    this.minuteOrder = []; // chaves de `minutes` em ordem, recalculado sob demanda
+    this.minuteOrderDirty = true;
   }
 
   async start() {
@@ -133,6 +146,7 @@ class TokenWatcher extends EventEmitter {
           if (this.ingest(line, dir)) changed = true;
         }
       }
+      if (changed) this.prune();
     } finally {
       this.scanning = false;
     }
@@ -149,6 +163,17 @@ class TokenWatcher extends EventEmitter {
     });
   }
 
+  /** @returns {boolean} true se a chave é nova (ou seja, deve ser contabilizada). */
+  remember(key) {
+    if (this.seen.has(key) || this.seenOld.has(key)) return false;
+    if (this.seen.size >= SEEN_MAX) {
+      this.seenOld = this.seen;
+      this.seen = new Set();
+    }
+    this.seen.add(key);
+    return true;
+  }
+
   ingest(line, dirName) {
     // Pré-filtro barato: só linhas de assistant com usage importam.
     if (line.length < 40 || line.indexOf('"usage"') === -1) return false;
@@ -158,25 +183,59 @@ class TokenWatcher extends EventEmitter {
     } catch {
       return false;
     }
-    const usage = entry.message && entry.message.usage;
+    if (entry.type !== 'assistant') return false;
+    const message = entry.message;
+    const usage = message && message.usage;
     if (!usage) return false;
 
-    const key = entry.requestId || entry.uuid;
-    if (!key || this.seen.has(key)) return false;
-    this.seen.add(key);
+    const model = (message && message.model) || 'unknown';
+    // Respostas sintéticas e erros de API aparecem como assistant com usage
+    // zerado; contá-las inflava o número de chamadas sem somar token nenhum.
+    if (entry.isApiErrorMessage || !isBillable(model)) {
+      this.skipped += 1;
+      return false;
+    }
+
+    // A mesma chamada reaparece quando uma sessão é retomada e o transcript é
+    // copiado para um arquivo novo. `message.id` + `requestId` identifica a
+    // chamada de forma estável entre cópias; o uuid muda em algumas delas.
+    const key = (message.id || entry.uuid || '') + '|' + (entry.requestId || '');
+    if (key === '|' || !this.remember(key)) return false;
+
+    // Só o total de cache_creation é garantido; a divisão 5 min / 1 hora vem no
+    // objeto `cache_creation` e muda o preço (1.25x contra 2x o input).
+    const cacheWrite = usage.cache_creation_input_tokens || 0;
+    const split = usage.cache_creation || null;
+    let cacheWrite1h = split ? split.ephemeral_1h_input_tokens || 0 : 0;
+    let cacheWrite5m = split ? split.ephemeral_5m_input_tokens || 0 : cacheWrite;
+    // Se a divisão não bate com o total, o total manda e a sobra vai para 5 min.
+    const splitSum = cacheWrite5m + cacheWrite1h;
+    if (splitSum !== cacheWrite) {
+      if (splitSum === 0) cacheWrite5m = cacheWrite;
+      else if (splitSum < cacheWrite) cacheWrite5m += cacheWrite - splitSum;
+      else {
+        cacheWrite1h = Math.min(cacheWrite1h, cacheWrite);
+        cacheWrite5m = cacheWrite - cacheWrite1h;
+      }
+    }
 
     const delta = {
       input: usage.input_tokens || 0,
       output: usage.output_tokens || 0,
-      cacheWrite: usage.cache_creation_input_tokens || 0,
+      cacheWrite,
+      cacheWrite5m,
+      cacheWrite1h,
       cacheRead: usage.cache_read_input_tokens || 0,
     };
-    const model = (entry.message && entry.message.model) || 'unknown';
+    const tokens = delta.input + delta.output + delta.cacheWrite + delta.cacheRead;
+    if (tokens === 0) return false;
     delta.cost = costOf(model, delta);
 
     const ts = entry.timestamp ? Date.parse(entry.timestamp) : Date.now();
     const projectName = entry.cwd ? path.basename(entry.cwd) : dirName;
-    const sessionId = entry.session_id || dirName;
+    // O campo no transcript é `sessionId`; `session_id` é aceito só por garantia
+    // de compatibilidade com transcripts antigos.
+    const sessionId = entry.sessionId || entry.session_id || dirName;
 
     let session = this.sessions.get(sessionId);
     if (!session) {
@@ -215,12 +274,15 @@ class TokenWatcher extends EventEmitter {
 
     addTotals(this.totals, delta);
 
-    const tokens = delta.input + delta.output + delta.cacheWrite + delta.cacheRead;
     const mk = minuteKey(ts);
-    const minute = this.minutes.get(mk) || { tokens: 0, cost: 0 };
-    minute.tokens += tokens;
-    minute.cost += delta.cost;
-    this.minutes.set(mk, minute);
+    const minute = this.minutes.get(mk);
+    if (minute) {
+      minute.tokens += tokens;
+      minute.cost += delta.cost;
+    } else {
+      this.minutes.set(mk, { tokens, cost: delta.cost });
+      this.minuteOrderDirty = true;
+    }
 
     this.recent.push({ ts, model, project: projectName, sessionId, tokens, cost: delta.cost });
     // Mantém as mais recentes por horário — a ordem de leitura dos arquivos não
@@ -238,7 +300,9 @@ class TokenWatcher extends EventEmitter {
     this.days.set(dk, day);
 
     const mdKey = model + '|' + dk;
-    const md = this.modelDays.get(mdKey) || { model, date: dk, tokens: 0, cost: 0, messages: 0 };
+    const md =
+      this.modelDays.get(mdKey) ||
+      { model, date: dk, dayTs: dayStart(ts), tokens: 0, cost: 0, messages: 0 };
     md.tokens += tokens;
     md.cost += delta.cost;
     md.messages += 1;
@@ -247,39 +311,71 @@ class TokenWatcher extends EventEmitter {
     return true;
   }
 
+  /** Descarta minutos antigos demais para qualquer janela exibida. */
+  prune() {
+    const cutoff = Date.now() - MINUTE_RETENTION_MS;
+    let removed = false;
+    for (const t of this.minutes.keys()) {
+      if (t < cutoff) {
+        this.minutes.delete(t);
+        removed = true;
+      }
+    }
+    if (removed) this.minuteOrderDirty = true;
+  }
+
+  /** Chaves de minuto em ordem crescente, recalculadas só quando mudam. */
+  sortedMinutes() {
+    if (this.minuteOrderDirty) {
+      this.minuteOrder = [...this.minutes.keys()].sort((a, b) => a - b);
+      this.minuteOrderDirty = false;
+    }
+    return this.minuteOrder;
+  }
+
   /**
-   * Reproduz as janelas que o `/usage` usa: um bloco de 5 horas que começa na
-   * primeira chamada após um intervalo ocioso, e a janela semanal de 7 dias.
+   * Reproduz as janelas que o `/usage` usa: um bloco de 5 horas ancorado na hora
+   * cheia da primeira chamada, e a janela dos últimos 7 dias.
    * As porcentagens de limite do plano vêm do servidor e não existem aqui, então
    * só o consumo absoluto é calculado.
    */
   usageWindows(now) {
     const blockStart = this.currentBlockStart(now);
-    const block = { tokens: 0, cost: 0, start: blockStart, active: blockStart !== null };
+    const block = { tokens: 0, cost: 0, messages: 0, start: blockStart, active: blockStart !== null };
     if (blockStart !== null) {
+      const end = blockStart + BLOCK_MS;
       for (const [t, m] of this.minutes) {
-        if (t >= blockStart && t < blockStart + BLOCK_MS) {
+        if (t >= blockStart && t < end) {
           block.tokens += m.tokens;
           block.cost += m.cost;
         }
       }
-      block.resetAt = blockStart + BLOCK_MS;
-      block.resetIn = Math.max(0, block.resetAt - now);
+      block.resetAt = end;
+      block.resetIn = Math.max(0, end - now);
       block.elapsed = Math.min(1, (now - blockStart) / BLOCK_MS);
+      // Ritmo do bloco: quanto sairia até o reset mantendo a média até agora.
+      const elapsedMin = Math.max(1, (now - blockStart) / 60000);
+      block.burnRate = block.tokens / elapsedMin;
+      block.projected = block.elapsed > 0 ? block.tokens / block.elapsed : block.tokens;
+      block.projectedCost = block.elapsed > 0 ? block.cost / block.elapsed : block.cost;
     } else {
       block.resetAt = null;
       block.resetIn = 0;
       block.elapsed = 0;
+      block.burnRate = 0;
+      block.projected = 0;
+      block.projectedCost = 0;
     }
 
-    const weekStart = now - 7 * 86400000;
-    const week = { tokens: 0, cost: 0, byModel: [] };
+    // Últimos 7 dias corridos, contando o dia de hoje inteiro.
+    const weekStart = dayStart(now) - 6 * DAY_MS;
+    const week = { tokens: 0, cost: 0, messages: 0, start: weekStart, byModel: [] };
     const perModel = new Map();
     for (const md of this.modelDays.values()) {
-      const dayTs = Date.parse(md.date + 'T00:00:00');
-      if (dayTs < weekStart - 86400000) continue;
+      if (md.dayTs < weekStart) continue;
       week.tokens += md.tokens;
       week.cost += md.cost;
+      week.messages += md.messages;
       const agg = perModel.get(md.model) || { name: md.model, tokens: 0, cost: 0, messages: 0 };
       agg.tokens += md.tokens;
       agg.cost += md.cost;
@@ -293,19 +389,23 @@ class TokenWatcher extends EventEmitter {
   }
 
   /**
-   * Início do bloco de 5h vigente. Um bloco começa na primeira atividade e dura
-   * 5 horas fixas; a atividade seguinte ao fim dele abre um bloco novo.
+   * Início do bloco de 5h vigente, ancorado na hora cheia — é assim que o
+   * servidor conta a janela. Um bloco novo começa quando o anterior completa 5h
+   * ou quando há mais de 5h sem nenhuma chamada.
    * Devolve null quando o último bloco já expirou (nenhum bloco aberto agora).
    */
   currentBlockStart(now) {
-    const times = [...this.minutes.keys()]
-      .filter((t) => t > now - 7 * 86400000)
-      .sort((a, b) => a - b);
-    if (times.length === 0) return null;
+    const times = this.sortedMinutes();
+    let i = 0;
+    while (i < times.length && times[i] <= now - 7 * DAY_MS) i++;
+    if (i >= times.length) return null;
 
-    let start = times[0];
-    for (const t of times) {
-      if (t >= start + BLOCK_MS) start = t;
+    let start = hourFloor(times[i]);
+    let prev = times[i];
+    for (; i < times.length; i++) {
+      const t = times[i];
+      if (t - start >= BLOCK_MS || t - prev >= BLOCK_MS) start = hourFloor(t);
+      prev = t;
     }
     return now < start + BLOCK_MS ? start : null;
   }
@@ -331,6 +431,7 @@ class TokenWatcher extends EventEmitter {
         totals: { ...p.totals },
         sessions: p.sessions.size,
         lastTs: p.lastTs,
+        active: now - p.lastTs < ACTIVE_WINDOW_MS,
       }))
       .sort((a, b) => b.totals.cost - a.totals.cost);
     // Só os 10 projetos de maior custo aparecem na lista.
@@ -346,16 +447,17 @@ class TokenWatcher extends EventEmitter {
       { count: 0, cost: 0, tokens: 0 }
     );
 
+    const nowMinute = minuteKey(now);
     const timeline = [];
-    const startMinute = minuteKey(now) - (TIMELINE_MINUTES - 1) * 60000;
-    for (let t = startMinute; t <= minuteKey(now); t += 60000) {
+    const startMinute = nowMinute - (TIMELINE_MINUTES - 1) * 60000;
+    for (let t = startMinute; t <= nowMinute; t += 60000) {
       const m = this.minutes.get(t);
       timeline.push({ t, tokens: m ? m.tokens : 0, cost: m ? m.cost : 0 });
     }
 
     const daily = [];
     for (let i = DAILY_DAYS - 1; i >= 0; i--) {
-      const dk = dayKey(now - i * 86400000);
+      const dk = dayKey(now - i * DAY_MS);
       const d = this.days.get(dk);
       daily.push({
         date: dk,
@@ -365,11 +467,14 @@ class TokenWatcher extends EventEmitter {
       });
     }
 
-    const today = this.days.get(dayKey(now)) || { tokens: 0, cost: 0 };
+    const today = this.days.get(dayKey(now)) || { tokens: 0, cost: 0, messages: 0 };
 
-    // Taxa dos últimos 5 minutos, em tokens/min.
-    const recent = timeline.slice(-5);
-    const rate = recent.reduce((a, b) => a + b.tokens, 0) / recent.length;
+    // Taxa dos últimos 5 minutos fechados. O minuto corrente fica de fora: ele
+    // está pela metade e puxaria a média para baixo a cada segundo.
+    const closed = timeline.slice(-6, -1);
+    const rate = closed.length ? closed.reduce((a, b) => a + b.tokens, 0) / closed.length : 0;
+    // Custo por minuto na mesma janela, para estimar gasto por hora.
+    const costRate = closed.length ? closed.reduce((a, b) => a + b.cost, 0) / closed.length : 0;
 
     return {
       ready: this.ready,
@@ -378,8 +483,11 @@ class TokenWatcher extends EventEmitter {
       totals: { ...this.totals },
       today,
       rate,
+      costRate,
+      skipped: this.skipped,
       current: sessions.find((s) => s.active) || sessions[0] || null,
       sessions: sessions.slice(0, 30),
+      sessionCount: this.sessions.size,
       projects,
       othersProjects,
       recent: [...this.recent].sort((a, b) => b.ts - a.ts).slice(0, 25),

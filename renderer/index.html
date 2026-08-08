@@ -2,106 +2,164 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
+    <!-- Nada é carregado de fora; os estilos inline são só larguras de barra. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    />
     <title>Token Monitor</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <!-- Sprite de ícones (Lucide). Vetorial e herda a cor do botão. -->
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="i-sliders" viewBox="0 0 24 24">
+        <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />
+      </symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24">
+        <path d="M12 17v5" />
+        <path
+          d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"
+        />
+      </symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24">
+        <path
+          d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
+        />
+      </symbol>
+    </svg>
+
     <header class="titlebar">
       <div class="title">
         <span class="dot" id="live-dot"></span>
         <strong>Token Monitor</strong>
+        <span class="chip" id="head-chip">—</span>
       </div>
       <div class="controls">
-        <button id="btn-cfg" title="Limites">⚙</button>
-        <button id="btn-pin" class="on" title="Sempre no topo">📌</button>
-        <button id="btn-min" title="Minimizar">–</button>
-        <button id="btn-close" title="Fechar">✕</button>
+        <button id="btn-cfg" aria-label="Limites e preferências" title="Limites e preferências">
+          <svg><use href="#i-sliders" /></svg>
+        </button>
+        <button id="btn-pin" class="on" aria-label="Sempre no topo" aria-pressed="true" title="Sempre no topo">
+          <svg><use href="#i-pin" /></svg>
+        </button>
+        <button id="btn-min" aria-label="Minimizar" title="Minimizar">
+          <svg><use href="#i-minus" /></svg>
+        </button>
+        <button id="btn-close" class="danger" aria-label="Fechar" title="Fechar">
+          <svg><use href="#i-x" /></svg>
+        </button>
       </div>
     </header>
 
     <main>
-      <div id="banner" class="banner hidden"></div>
+      <div id="banner" class="banner hidden" role="status" aria-live="polite"></div>
 
-      <section id="settings" class="settings hidden">
-        <label>
-          <span>Tokens/dia (M)</span>
-          <input type="number" id="in-daily-tok" min="0" step="1" />
-        </label>
-        <label>
-          <span>Tokens/sessão (M)</span>
-          <input type="number" id="in-session-tok" min="0" step="1" />
-        </label>
-        <label>
-          <span>Custo/dia (USD)</span>
-          <input type="number" id="in-daily" min="0" step="1" />
-        </label>
-        <label>
-          <span>Custo/sessão (USD)</span>
-          <input type="number" id="in-session" min="0" step="1" />
-        </label>
-        <label>
-          <span>Avisar em (%)</span>
-          <input type="number" id="in-warn" min="10" max="100" step="5" />
-        </label>
-        <label class="check">
-          <input type="checkbox" id="in-notify" />
-          <span>Notificar</span>
-        </label>
-        <label class="check">
-          <input type="checkbox" id="in-sound" />
-          <span>Som</span>
-        </label>
-        <p class="hint">0 desliga. Custo em USD é estimativa de preço de API.</p>
+      <section id="settings" class="settings hidden" aria-label="Preferências">
+        <div class="settings-group">
+          <span class="group-title">Limites de tokens</span>
+          <label for="in-daily-tok"><span>Por dia (M)</span>
+            <input type="number" id="in-daily-tok" min="0" step="1" />
+          </label>
+          <label for="in-session-tok"><span>Por sessão (M)</span>
+            <input type="number" id="in-session-tok" min="0" step="1" />
+          </label>
+        </div>
+        <div class="settings-group">
+          <span class="group-title">Limites de custo</span>
+          <label for="in-daily"><span>Por dia (USD)</span>
+            <input type="number" id="in-daily" min="0" step="1" />
+          </label>
+          <label for="in-session"><span>Por sessão (USD)</span>
+            <input type="number" id="in-session" min="0" step="1" />
+          </label>
+        </div>
+        <div class="settings-group">
+          <span class="group-title">Avisos</span>
+          <label for="in-warn"><span>Avisar em (%)</span>
+            <input type="number" id="in-warn" min="10" max="100" step="5" />
+          </label>
+          <label class="check" for="in-notify">
+            <input type="checkbox" id="in-notify" /><span>Notificação do sistema</span>
+          </label>
+          <label class="check" for="in-sound">
+            <input type="checkbox" id="in-sound" /><span>Som</span>
+          </label>
+        </div>
+        <p class="hint">0 desliga o limite. O custo em USD é estimativa por preço de tabela da API.</p>
       </section>
 
-      <section class="cards">
-        <div class="card">
+      <!-- Métrica principal: a janela de 5h é o que de fato limita o uso. -->
+      <section class="hero" id="hero">
+        <div class="hero-head">
+          <span class="hero-title">Bloco de 5h</span>
+          <span class="hero-reset" id="hero-reset">—</span>
+        </div>
+        <div class="hero-main">
+          <span class="hero-value" id="hero-tokens">—</span>
+          <span class="hero-unit">tokens</span>
+          <span class="hero-cost" id="hero-cost">—</span>
+        </div>
+        <div class="track lg"><span id="hero-track"></span></div>
+        <div class="hero-foot">
+          <span id="hero-note">—</span>
+          <span id="hero-proj"></span>
+        </div>
+      </section>
+
+      <section class="stats">
+        <div class="stat">
           <span class="label">Hoje</span>
           <span class="value" id="today-tokens">—</span>
           <span class="sub" id="today-cost">—</span>
         </div>
-        <div class="card">
-          <span class="label">Sessão atual</span>
+        <div class="stat">
+          <span class="label">Sessão</span>
           <span class="value" id="cur-tokens">—</span>
           <span class="sub" id="cur-project">—</span>
         </div>
-        <div class="card">
-          <span class="label">Taxa</span>
+        <div class="stat">
+          <span class="label">Ritmo</span>
           <span class="value" id="rate">—</span>
-          <span class="sub">tokens/min (5 min)</span>
-        </div>
-        <div class="card">
-          <span class="label">Modelo ativo</span>
-          <span class="value small" id="cur-model">—</span>
-          <span class="sub" id="cur-cost">—</span>
+          <span class="sub" id="rate-sub">tok/min</span>
         </div>
       </section>
 
-      <section class="breakdown">
+      <section class="panel">
+        <div class="panel-head">
+          <span class="section-title" id="mix-title">Composição da sessão</span>
+          <span class="section-meta" id="mix-model">—</span>
+        </div>
         <div class="bar" id="bar"></div>
         <ul class="legend" id="legend"></ul>
       </section>
 
-      <section class="chart-block">
-        <div class="section-title">Últimos 60 min</div>
-        <canvas id="chart" height="70"></canvas>
+      <section class="panel">
+        <div class="panel-head">
+          <span class="section-title">Últimos 60 min</span>
+          <span class="section-meta" id="chart-readout">—</span>
+        </div>
+        <canvas id="chart" height="76" aria-label="Consumo de tokens por minuto na última hora"></canvas>
       </section>
 
       <section class="limits" id="limits"></section>
 
-      <nav class="tabs">
-        <button data-tab="live" class="active">Ao vivo</button>
-        <button data-tab="usage">Uso</button>
-        <button data-tab="models">Modelos</button>
-        <button data-tab="projects">Projetos</button>
+      <nav class="tabs" role="tablist">
+        <button data-tab="live" class="active" role="tab" aria-selected="true">Ao vivo</button>
+        <button data-tab="usage" role="tab" aria-selected="false">Uso</button>
+        <button data-tab="models" role="tab" aria-selected="false">Modelos</button>
+        <button data-tab="projects" role="tab" aria-selected="false">Projetos</button>
       </nav>
 
-      <section class="list" id="list"></section>
+      <section class="list" id="list" role="tabpanel"></section>
     </main>
 
     <footer>
       <span id="footer-total">—</span>
-      <button id="btn-open" title="Abrir pasta dos transcripts">📁</button>
+      <button id="btn-open" aria-label="Abrir pasta dos transcripts" title="Abrir pasta dos transcripts">
+        <svg><use href="#i-folder" /></svg>
+      </button>
     </footer>
 
     <script src="renderer.js"></script>
