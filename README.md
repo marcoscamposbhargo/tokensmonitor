@@ -1,9 +1,19 @@
-# Token Monitor
+<p align="center">
+  <img src="assets/icon-256.png" width="112" alt="Token Monitor" />
+</p>
 
-Janela flutuante que acompanha, em tempo real, o consumo de tokens do Claude Code
-em todas as sessões e projetos da máquina.
+<h1 align="center">Token Monitor</h1>
 
-Histórico de mudanças em [CHANGELOG.md](CHANGELOG.md).
+<p align="center">
+  Janela flutuante que acompanha, em tempo real, o consumo de tokens do
+  Claude&nbsp;Code em todas as sessões e projetos da máquina.
+</p>
+
+<p align="center">
+  <a href="CHANGELOG.md">Changelog</a> ·
+  <a href="#porcentagem-do-limite-calibração">Calibração</a> ·
+  <a href="#sobre-os-custos">Custos</a>
+</p>
 
 ## Rodar
 
