@@ -137,18 +137,36 @@ footer {
   background: rgba(63, 185, 80, 0.12);
 }
 
+.brand {
+  position: relative;
+  display: block;
+  flex: none;
+  line-height: 0;
+}
+
+.brand img {
+  border-radius: 5px;
+  display: block;
+}
+
 .dot {
-  width: 7px;
-  height: 7px;
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: #3a4453;
-  flex: none;
+  /* Anel na cor da barra: separa o ponto do desenho do ícone. */
+  box-shadow: 0 0 0 2px var(--panel);
   transition: background var(--t-base) var(--ease);
 }
 
 .dot.live {
   background: var(--ok);
-  box-shadow: 0 0 8px var(--ok);
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 8px var(--ok);
   animation: pulse 1.8s infinite;
 }
 

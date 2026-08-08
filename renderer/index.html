@@ -34,7 +34,12 @@
 
     <header class="titlebar">
       <div class="title">
-        <span class="dot" id="live-dot"></span>
+        <!-- O ponto de atividade fica no canto do ícone, como um badge de
+             status: economiza largura e mantém os dois juntos. -->
+        <span class="brand">
+          <img src="../assets/icon-64.png" alt="" width="20" height="20" />
+          <span class="dot" id="live-dot"></span>
+        </span>
         <strong>Token Monitor</strong>
         <span class="chip" id="head-chip">—</span>
       </div>

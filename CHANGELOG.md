@@ -63,7 +63,8 @@ Revisão de precisão das métricas e redesenho do painel.
   ponta da maior em verde `#3FB950`. A forma é a mesma leitura do painel — cota
   parcial de um bloco, com consumo subindo.
   Gerado em `.ico` multi-tamanho (16 a 256) para o Windows e PNG de 16 a 512;
-  usado na janela, na barra de tarefas e nas notificações.
+  usado na janela, na barra de tarefas, nas notificações e na barra de título do
+  próprio painel, onde o ponto de atividade virou um badge no canto do ícone.
 
 ### Alterado — interface
 
