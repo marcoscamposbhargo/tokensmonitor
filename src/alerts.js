@@ -35,13 +35,14 @@ function candidates(snapshot, config) {
   ];
   if (block && block.active) {
     list.push({
-      scope: 'blockTokens',
-      unit: 'tokens',
+      scope: 'blockCost',
+      // Custo é a régua da cota do bloco: já pondera modelo e tipo de token.
+      unit: 'usd',
       // A chave carrega o início do bloco: cada bloco novo rearma o alerta.
       key: `block:${block.start}`,
-      label: `Tokens do bloco de ${block.hours}h`,
-      value: block.tokens,
-      limit: config.blockTokenLimit,
+      label: `Cota do bloco de ${block.hours}h`,
+      value: block.cost,
+      limit: config.blockCostLimit,
     });
   }
   if (cur) {
@@ -118,8 +119,10 @@ function status(snapshot, config) {
     };
   }
   // Sessão ou bloco ausente: mantém as chaves para a interface não quebrar.
-  for (const k of ['sessionTokens', 'session', 'blockTokens']) {
-    if (!out[k]) out[k] = { unit: k === 'session' ? 'usd' : 'tokens', value: 0, limit: 0, level: 'ok' };
+  for (const k of ['sessionTokens', 'session', 'blockCost']) {
+    if (!out[k]) {
+      out[k] = { unit: k === 'sessionTokens' ? 'tokens' : 'usd', value: 0, limit: 0, level: 'ok' };
+    }
   }
   return out;
 }

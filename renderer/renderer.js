@@ -49,7 +49,7 @@ const hhmm = (ts) => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit',
 /* ---------- limites ---------- */
 
 const SCOPES = [
-  { key: 'blockTokens', title: 'tokens/bloco', unit: 'tokens' },
+  { key: 'blockCost', title: 'cota do bloco', unit: 'usd' },
   { key: 'dailyTokens', title: 'tokens/dia', unit: 'tokens' },
   { key: 'sessionTokens', title: 'tokens/sessão', unit: 'tokens' },
   { key: 'daily', title: 'custo/dia', unit: 'usd' },
@@ -64,7 +64,7 @@ const activeAlerts = (data) =>
 function renderLimits(data) {
   // O bloco já tem a barra do destaque no topo; repetir aqui seria a mesma
   // informação duas vezes na mesma tela.
-  const rows = activeAlerts(data).filter((a) => a.key !== 'blockTokens');
+  const rows = activeAlerts(data).filter((a) => a.key !== 'blockCost');
   el('limits').innerHTML = rows
     .map((a) => {
       const pct = Math.min(100, (a.value / a.limit) * 100);
@@ -351,7 +351,7 @@ function trackDeltas(data) {
 }
 
 function renderConfig(cfg) {
-  el('in-block-tok').value = cfg.blockTokenLimit / 1e6;
+  el('in-block-cost').value = cfg.blockCostLimit ? cfg.blockCostLimit.toFixed(2) : 0;
   el('in-daily-tok').value = cfg.dailyTokenLimit / 1e6;
   el('in-session-tok').value = cfg.sessionTokenLimit / 1e6;
   el('in-daily').value = cfg.dailyLimit;
@@ -364,7 +364,7 @@ function renderConfig(cfg) {
 function renderHero(data) {
   const b = data.usage.block;
   const hero = el('hero');
-  const limit = (data.config && data.config.blockTokenLimit) || 0;
+  const limit = (data.config && data.config.blockCostLimit) || 0;
   el('hero-title').textContent = `Bloco de ${b.hours}h`;
   hero.classList.toggle('idle', !b.active);
   hero.classList.remove('warn', 'over');
@@ -384,17 +384,18 @@ function renderHero(data) {
   el('hero-cost').textContent = usd(b.cost);
 
   if (limit > 0) {
-    // Com o limite calibrado a métrica principal vira a mesma do `/usage`.
-    const pct = (b.tokens / limit) * 100;
-    const level = (data.alerts.blockTokens && data.alerts.blockTokens.level) || 'ok';
+    // Com a cota calibrada a métrica principal vira a mesma do `/usage`. A conta
+    // é sobre o custo, então mudar de modelo já entra ponderado sem recalibrar.
+    const pct = (b.cost / limit) * 100;
+    const level = (data.alerts.blockCost && data.alerts.blockCost.level) || 'ok';
     if (level !== 'ok') hero.classList.add(level);
     el('hero-tokens').textContent = pct.toFixed(pct < 10 ? 1 : 0) + '%';
-    el('hero-unit').textContent = 'do limite';
+    el('hero-unit').textContent = 'da cota';
     el('hero-track').style.width = Math.min(100, pct).toFixed(1) + '%';
-    el('hero-note').textContent = `${fmt(b.tokens)} de ${fmt(limit)} · ${fmt(b.burnRate)} tok/min`;
+    el('hero-note').textContent = `${fmt(b.tokens)} tokens · ${fmt(b.burnRate)} tok/min`;
     // Projeção só faz sentido depois que o bloco andou o bastante para ter média.
     el('hero-proj').textContent =
-      b.elapsed > 0.08 ? `projeção ${((b.projected / limit) * 100).toFixed(0)}% no reset` : '';
+      b.elapsed > 0.08 ? `projeção ${((b.projectedCost / limit) * 100).toFixed(0)}% no reset` : '';
     return;
   }
 
@@ -466,7 +467,7 @@ el('btn-cfg').addEventListener('click', (e) => {
 async function saveConfig() {
   renderConfig(
     await window.tokens.setConfig({
-      blockTokenLimit: (Number(el('in-block-tok').value) || 0) * 1e6,
+      blockCostLimit: Number(el('in-block-cost').value) || 0,
       dailyTokenLimit: (Number(el('in-daily-tok').value) || 0) * 1e6,
       sessionTokenLimit: (Number(el('in-session-tok').value) || 0) * 1e6,
       dailyLimit: Number(el('in-daily').value) || 0,
@@ -479,7 +480,7 @@ async function saveConfig() {
 }
 
 [
-  'in-block-tok',
+  'in-block-cost',
   'in-daily-tok',
   'in-session-tok',
   'in-daily',
@@ -492,20 +493,22 @@ async function saveConfig() {
 /**
  * Calibração: o limite do plano não vem em nenhum arquivo local, mas a
  * porcentagem que o `/usage` mostra é o consumo do bloco dividido por ele.
- * Com o consumo já medido aqui, informar a porcentagem revela o limite.
+ * Com o consumo já medido aqui, informar a porcentagem revela a cota.
+ *
+ * A cota fica em custo, não em tokens, justamente para não precisar recalibrar a
+ * cada troca de modelo: o custo já pondera Opus contra Haiku na mesma régua.
  */
 el('in-cal-pct').addEventListener('change', async () => {
   const pct = Number(el('in-cal-pct').value);
   const b = last && last.usage.block;
-  if (!(pct > 0) || !b || !b.active || b.tokens === 0) {
+  if (!(pct > 0) || !b || !b.active || b.cost === 0) {
     el('cal-hint').textContent =
       'Precisa de um bloco aberto com consumo para calibrar. Rode uma chamada e tente de novo.';
     return;
   }
-  const limit = Math.round(b.tokens / (pct / 100));
-  el('in-block-tok').value = (limit / 1e6).toFixed(1);
+  el('in-block-cost').value = (b.cost / (pct / 100)).toFixed(2);
   await saveConfig();
-  el('cal-hint').textContent = `Calibrado: ${fmt(b.tokens)} equivalem a ${pct}%, então o limite do bloco é ~${fmt(limit)} tokens.`;
+  el('cal-hint').textContent = `Calibrado: ${usd(b.cost)} equivalem a ${pct}%, então a cota do bloco é ~${el('in-block-cost').value} em custo estimado. Trocar de modelo não exige recalibrar.`;
 });
 
 // Leitura ponto a ponto do gráfico — o painel é pequeno demais para tooltip.

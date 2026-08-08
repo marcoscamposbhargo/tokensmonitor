@@ -11,10 +11,15 @@ const DEFAULTS = {
   // Limites em tokens (soma de input + output + cache). 0 desliga.
   dailyTokenLimit: 0,
   sessionTokenLimit: 0,
-  // Tokens que cabem em um bloco antes de bater o limite do plano. O valor não
+  // Cota de um bloco, medida em custo estimado (USD). O limite do plano não
   // existe em arquivo nenhum: é deduzido comparando o consumo do bloco atual com
   // a porcentagem que o `/usage` mostra (ver calibração no renderer).
-  blockTokenLimit: 0,
+  //
+  // A régua é o custo, e não a contagem de tokens, porque a cota do plano é
+  // ponderada por modelo — um token de Opus pesa 5x um de Haiku. Como o custo já
+  // embute esse peso, trocar de modelo no meio do bloco se corrige sozinho e a
+  // calibração continua valendo.
+  blockCostLimit: 0,
   // Fração do limite que dispara o aviso amarelo.
   warnAt: 0.8,
   notify: true,
@@ -43,7 +48,7 @@ function set(patch) {
   cache = { ...cache, ...patch };
   if (cache.warnAt < 0.1) cache.warnAt = 0.1;
   if (cache.warnAt > 1) cache.warnAt = 1;
-  for (const k of ['dailyLimit', 'sessionLimit', 'dailyTokenLimit', 'sessionTokenLimit', 'blockTokenLimit']) {
+  for (const k of ['dailyLimit', 'sessionLimit', 'dailyTokenLimit', 'sessionTokenLimit', 'blockCostLimit']) {
     if (!(cache[k] > 0)) cache[k] = 0;
   }
   if (filePath) {

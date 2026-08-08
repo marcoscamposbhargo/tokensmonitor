@@ -62,12 +62,14 @@
           <label for="in-cal-pct"><span>% que o /usage mostra agora</span>
             <input type="number" id="in-cal-pct" min="1" max="100" step="1" placeholder="ex. 7" />
           </label>
-          <label for="in-block-tok"><span>Limite do bloco (M)</span>
-            <input type="number" id="in-block-tok" min="0" step="1" />
+          <label for="in-block-cost"><span>Cota do bloco (USD equiv.)</span>
+            <input type="number" id="in-block-cost" min="0" step="0.5" />
           </label>
           <p class="hint" id="cal-hint">
             O limite do plano não existe em arquivo local. Digite a porcentagem do
-            <code>/usage</code> e o limite é deduzido do consumo do bloco atual.
+            <code>/usage</code> e a cota é deduzida do consumo do bloco atual. A régua
+            é o custo estimado, que já pondera o modelo — trocar de modelo se corrige
+            sozinho.
           </p>
         </div>
         <div class="settings-group">

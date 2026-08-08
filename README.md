@@ -76,27 +76,40 @@ Reproduz o formato do `/usage` com os dados locais:
 ## Porcentagem do limite (calibração)
 
 O `/usage` mostra a **porcentagem do limite do seu plano**. Esse número vem do
-servidor da Anthropic e não existe em nenhum arquivo local — mas ele é só o
-consumo do bloco dividido pelo limite, e o consumo já é medido aqui. Então basta
-informar a porcentagem uma vez para o limite ficar conhecido:
+servidor da Anthropic e não existe em nenhum arquivo local — o campo `rateLimits`
+dos transcripts vem sempre nulo. Mas a porcentagem é só o consumo do bloco
+dividido pela cota, e o consumo já é medido aqui. Então basta informar a
+porcentagem uma vez para a cota ficar conhecida:
 
 1. rode `/usage` no Claude Code e veja a porcentagem do bloco
 2. abra as preferências do monitor e digite esse número em **% que o /usage
    mostra agora**
-3. o limite deduzido aparece em **Limite do bloco (M)** e fica salvo
+3. a cota deduzida aparece em **Cota do bloco (USD equiv.)** e fica salva
 
 A partir daí o destaque do topo mostra a porcentagem no lugar do total, colorida
 em amarelo no aviso e vermelha ao estourar, com a projeção de onde o bloco
-termina no ritmo atual. A calibração é uma estimativa: o servidor pondera o
-limite por modelo, então recalibre se o número começar a divergir do `/usage`.
+termina no ritmo atual.
+
+### Por que a cota é medida em custo
+
+A cota do plano é **ponderada por modelo**: um token de Opus consome muito mais
+limite que um de Haiku. Se a régua fosse a contagem bruta de tokens, trocar de
+modelo no meio do bloco jogaria a porcentagem fora e exigiria recalibrar.
+
+O custo estimado já embute exatamente esse peso, então ele é a régua. Os mesmos
+5M de tokens entram como 7,5% em Opus 5, 4,5% em Sonnet 5 e 1,5% em Haiku 4.5 —
+a correção por modelo é automática, sem recalibrar.
+
+Ainda assim é uma estimativa: a ponderação real do servidor pode não ser
+exatamente a razão de preço. Se o número divergir do `/usage`, recalibre.
 
 ## Alertas
 
 Todos os limites vêm **desligados** por padrão. Abra as preferências pelo ícone
 de controles na barra do topo para definir:
 
-- **Limite do bloco** (em milhões) — preenchido pela calibração acima; é o alerta
-  que corresponde ao que o `/usage` reporta
+- **Cota do bloco** (USD equivalente) — preenchida pela calibração acima; é o
+  alerta que corresponde ao que o `/usage` reporta
 - **Tokens/dia** e **Tokens/sessão** (em milhões) — a métrica que vale em plano
   de assinatura
 - **Custo/dia** e **Custo/sessão** (USD) — só faz sentido se você usa API paga
@@ -129,9 +142,12 @@ maior fatia, e cobrá-lo como se fosse de 5 min subestima o custo em ~60% desse
 componente.
 
 A tabela também é sensível à versão: Opus 4, 4.1 e 3 ficam na faixa antiga
-(15/75), e de Opus 4.5 em diante o preço é 5/25. Confira os valores em
-`src/pricing.js` antes de tratar o número como definitivo — ajustar é editar uma
-linha.
+(15/75), e de Opus 4.5 em diante o preço é 5/25.
+
+A tabela foi conferida contra o `costUSD` que o próprio Claude Code grava em
+`~/.claude.json` (campo `lastModelUsage`), com **0,00% de erro** em todas as
+amostras de Opus 5, Opus 5 `[1m]` e Haiku 4.5 — o que confirma tanto os preços
+por modelo quanto os multiplicadores de cache acima.
 
 Se você usa Claude Code por assinatura (Pro/Max), esse valor **não é o que você
 paga** — serve como referência de peso relativo entre modelos, projetos e dias.
