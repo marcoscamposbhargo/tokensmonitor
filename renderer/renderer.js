@@ -405,7 +405,14 @@ function trackDeltas(data) {
   }
 }
 
+// Janela sob a qual a cota do bloco foi calibrada. Editar a cota na mão vale
+// para a janela vigente, então o valor acompanha o bloco atual.
+let calBlockHours = 0;
+
 function renderConfig(cfg) {
+  // Sem procedência, a cota fica marcada como não calibrada — cair para a janela
+  // atual aqui revalidaria silenciosamente uma cota velha.
+  calBlockHours = cfg.blockCalHours || 0;
   el('in-block-cost').value = cfg.blockCostLimit ? cfg.blockCostLimit.toFixed(2) : 0;
   el('in-week-cost').value = cfg.weekCostLimit ? cfg.weekCostLimit.toFixed(2) : 0;
   el('in-week-fable-cost').value = cfg.weekFableCostLimit ? cfg.weekFableCostLimit.toFixed(2) : 0;
@@ -421,7 +428,9 @@ function renderConfig(cfg) {
 function renderHero(data) {
   const b = data.usage.block;
   const hero = el('hero');
-  const limit = (data.config && data.config.blockCostLimit) || 0;
+  const stale = !!(data.alerts.blockCost && data.alerts.blockCost.stale);
+  // Cota calibrada sob outra janela nao vale: cai para o modo absoluto e avisa.
+  const limit = stale ? 0 : (data.config && data.config.blockCostLimit) || 0;
   el('hero-title').textContent = `Bloco de ${b.hours}h`;
   hero.classList.toggle('idle', !b.active);
   hero.classList.remove('warn', 'over');
@@ -459,7 +468,9 @@ function renderHero(data) {
   el('hero-tokens').textContent = fmt(b.tokens);
   el('hero-unit').textContent = 'tokens';
   el('hero-track').style.width = (b.elapsed * 100).toFixed(1) + '%';
-  el('hero-note').textContent = `${hhmm(b.start)}–${hhmm(b.resetAt)} · ${fmt(b.burnRate)} tok/min`;
+  el('hero-note').textContent = stale
+    ? `cota calibrada para janela de ${data.config.blockCalHours || '?'}h — recalibrar`
+    : `${hhmm(b.start)}–${hhmm(b.resetAt)} · ${fmt(b.burnRate)} tok/min`;
   el('hero-proj').textContent =
     b.elapsed > 0.08 ? `projeção ${fmt(b.projected)} · ${usd(b.projectedCost)}` : '';
 }
@@ -525,6 +536,7 @@ async function saveConfig() {
   renderConfig(
     await window.tokens.setConfig({
       blockCostLimit: Number(el('in-block-cost').value) || 0,
+      blockCalHours: calBlockHours,
       weekCostLimit: Number(el('in-week-cost').value) || 0,
       weekFableCostLimit: Number(el('in-week-fable-cost').value) || 0,
       dailyTokenLimit: (Number(el('in-daily-tok').value) || 0) * 1e6,
@@ -537,6 +549,11 @@ async function saveConfig() {
     })
   );
 }
+
+// Editar a cota na mão é um ato deliberado: vale para a janela vigente.
+el('in-block-cost').addEventListener('change', () => {
+  calBlockHours = last ? last.usage.block.hours : 0;
+});
 
 [
   'in-block-cost',
@@ -568,6 +585,9 @@ el('in-cal-pct').addEventListener('change', async () => {
     return;
   }
   el('in-block-cost').value = (b.cost / (pct / 100)).toFixed(2);
+  // Guarda sob qual janela a cota foi deduzida, para ela se invalidar sozinha
+  // caso BLOCK_HOURS mude depois.
+  calBlockHours = b.hours;
   await saveConfig();
   el('cal-hint').textContent = `Calibrado: ${usd(b.cost)} equivalem a ${pct}%, então a cota do bloco é ~${el('in-block-cost').value} em custo estimado. Trocar de modelo não exige recalibrar.`;
 });

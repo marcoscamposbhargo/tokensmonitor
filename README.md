@@ -133,6 +133,15 @@ a correção por modelo é automática, sem recalibrar.
 Ainda assim é uma estimativa: a ponderação real do servidor pode não ser
 exatamente a razão de preço. Se o número divergir do `/usage`, recalibre.
 
+### A calibração se invalida sozinha
+
+Junto com a cota fica gravada a **duração de janela** em que ela foi medida. Se
+`BLOCK_HOURS` mudar depois, a cota antiga deixa de valer: como os blocos são
+encadeados, outra duração recorta os blocos em outros pontos e o consumo medido
+vira outro número. O painel então volta a mostrar o total absoluto e avisa
+`recalibrar`, em vez de exibir uma porcentagem errada com cara de certa. Os
+alertas ficam desligados enquanto isso.
+
 ## Alertas
 
 Todos os limites vêm **desligados** por padrão. Abra as preferências pelo ícone

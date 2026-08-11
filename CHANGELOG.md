@@ -131,8 +131,16 @@ contexto, contra o "72% of your usage was at >150k context" do `/usage`.
 
 ### Migração
 
-Quem calibrou na versão anterior precisa refazer uma vez: `blockTokenLimit` (em
-tokens) foi substituído por `blockCostLimit` (em custo).
+- Quem calibrou na versão anterior precisa refazer uma vez: `blockTokenLimit` (em
+  tokens) foi substituído por `blockCostLimit` (em custo).
+- **A calibração agora guarda a duração de janela em que foi medida**
+  (`blockCalHours`). Cota sem essa procedência, ou medida sob outra duração, é
+  tratada como não calibrada: o painel volta ao total absoluto, avisa
+  `recalibrar` e não dispara alerta. Foi o que aconteceu com a cota deduzida
+  enquanto a janela estava em 4h — ela marcava 96% quando o consumo real era 12%
+  da cota certa.
+- O `config.json` passou a descartar chaves desconhecidas ao carregar, então
+  campos de versões antigas não ficam para sempre no arquivo.
 
 ## [0.1.0] — 2026-08-08
 

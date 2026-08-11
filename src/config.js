@@ -24,6 +24,11 @@ const DEFAULTS = {
   // Fable, que tem cota própria.
   weekCostLimit: 0,
   weekFableCostLimit: 0,
+  // Sob qual duração de bloco a cota foi calibrada. Se `BLOCK_HOURS` mudar, a
+  // cota antiga deixa de valer: os blocos são encadeados, então outra duração
+  // desloca o início de todos eles e o consumo medido vira outro número. Sem
+  // esse registro o painel mostraria uma porcentagem errada com cara de certa.
+  blockCalHours: 0,
   // Fração do limite que dispara o aviso amarelo.
   warnAt: 0.8,
   notify: true,
@@ -36,8 +41,13 @@ let cache = { ...DEFAULTS };
 function init(userDataDir) {
   filePath = path.join(userDataDir, 'config.json');
   try {
-    const raw = fs.readFileSync(filePath, 'utf8');
-    cache = { ...DEFAULTS, ...JSON.parse(raw) };
+    const saved = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    // Só chaves conhecidas sobrevivem: campos de versões antigas ficariam no
+    // arquivo para sempre, sem ninguém lendo.
+    cache = { ...DEFAULTS };
+    for (const k of Object.keys(DEFAULTS)) {
+      if (saved[k] !== undefined) cache[k] = saved[k];
+    }
   } catch {
     cache = { ...DEFAULTS };
   }
@@ -64,6 +74,9 @@ function set(patch) {
   for (const k of limits) {
     if (!(cache[k] > 0)) cache[k] = 0;
   }
+  if (!(cache.blockCalHours > 0)) cache.blockCalHours = 0;
+  // Cota sem calibração não existe: zerar uma zera a outra.
+  if (cache.blockCostLimit === 0) cache.blockCalHours = 0;
   if (filePath) {
     try {
       fs.writeFileSync(filePath, JSON.stringify(cache, null, 2));

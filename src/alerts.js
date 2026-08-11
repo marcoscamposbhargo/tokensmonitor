@@ -8,7 +8,16 @@ function sumTokens(t) {
   return t.input + t.output + t.cacheWrite + t.cacheRead;
 }
 
-/** Descreve os quatro limites possíveis a partir do snapshot e da config. */
+/**
+ * A cota do bloco só vale para a duração de janela em que foi calibrada. Com
+ * outra duração os blocos passam a ser recortados em outros pontos, e o consumo
+ * medido vira outro número — a porcentagem ficaria errada parecendo certa.
+ */
+function blockCalStale(block, config) {
+  return config.blockCostLimit > 0 && config.blockCalHours !== block.hours;
+}
+
+/** Descreve os limites possíveis a partir do snapshot e da config. */
 function candidates(snapshot, config) {
   // Mesmo dia local que o watcher usa para agregar — em UTC o alerta rearmaria
   // no meio da tarde em vez de na virada do dia.
@@ -37,13 +46,16 @@ function candidates(snapshot, config) {
   if (block && block.active) {
     list.push({
       scope: 'blockCost',
+      // Calibrada sob outra duração de janela, a cota não vale mais — vira 0, que
+      // é o mesmo que "sem limite", em vez de alertar com um número errado.
+      stale: blockCalStale(block, config),
       // Custo é a régua da cota do bloco: já pondera modelo e tipo de token.
       unit: 'usd',
       // A chave carrega o início do bloco: cada bloco novo rearma o alerta.
       key: `block:${block.start}`,
       label: `Cota do bloco de ${block.hours}h`,
       value: block.cost,
-      limit: config.blockCostLimit,
+      limit: blockCalStale(block, config) ? 0 : config.blockCostLimit,
     });
   }
   if (week) {
@@ -137,6 +149,7 @@ function status(snapshot, config) {
       label: c.label,
       value: c.value,
       limit: c.limit,
+      stale: !!c.stale,
       level: AlertTracker.level(c.value, c.limit, config.warnAt),
     };
   }
@@ -149,4 +162,4 @@ function status(snapshot, config) {
   return out;
 }
 
-module.exports = { AlertTracker, status };
+module.exports = { AlertTracker, status, blockCalStale };
