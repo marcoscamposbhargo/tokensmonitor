@@ -81,7 +81,7 @@ function send(snapshot) {
 }
 
 app.whenReady().then(async () => {
-  config.init(app.getPath('userData'));
+  watcher.setBlockAnchor(config.init(app.getPath('userData')).blockAnchor);
   app.setAppUserModelId('com.tokenmonitor.app');
   createWindow();
 
@@ -96,6 +96,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('config:get', () => config.get());
   ipcMain.handle('config:set', (_e, patch) => {
     const cfg = config.set(patch);
+    watcher.setBlockAnchor(cfg.blockAnchor);
     // Rearma para os novos limites valerem imediatamente.
     tracker.reset();
     send(watcher.snapshot());

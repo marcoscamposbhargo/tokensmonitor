@@ -323,7 +323,7 @@ function renderUsage(data) {
         </div>
         <div class="uwin-val">${fmt(b.tokens)} tokens <small>${usd(b.cost)}</small></div>
         <div class="track"><span style="width:${blockPct}%"></span></div>
-        <div class="uwin-note">iniciado ${hhmm(b.start)} · ${blockPct.toFixed(0)}% do tempo · ritmo ${fmt(b.burnRate)} tok/min</div>
+        <div class="uwin-note">iniciado ${hhmm(b.start)}${b.anchored ? ' (ancorado no /usage)' : ''} · ${blockPct.toFixed(0)}% do tempo · ritmo ${fmt(b.burnRate)} tok/min</div>
       </div>`
     : `<div class="uwin">
         <div class="uwin-head"><span>Bloco de ${b.hours}h</span></div>
@@ -470,7 +470,7 @@ function renderHero(data) {
   el('hero-track').style.width = (b.elapsed * 100).toFixed(1) + '%';
   el('hero-note').textContent = stale
     ? `cota calibrada para janela de ${data.config.blockCalHours || '?'}h — recalibrar`
-    : `${hhmm(b.start)}–${hhmm(b.resetAt)} · ${fmt(b.burnRate)} tok/min`;
+    : `${hhmm(b.start)}–${hhmm(b.resetAt)}${b.anchored ? ' (ancorado)' : ''} · ${fmt(b.burnRate)} tok/min`;
   el('hero-proj').textContent =
     b.elapsed > 0.08 ? `projeção ${fmt(b.projected)} · ${usd(b.projectedCost)}` : '';
 }
@@ -567,6 +567,27 @@ el('in-block-cost').addEventListener('change', () => {
   'in-notify',
   'in-sound',
 ].forEach((id) => el(id).addEventListener('change', saveConfig));
+
+/**
+ * Ancoragem do bloco: a janela do servidor conta uso de outros dispositivos e do
+ * claude.ai, invisível aqui, então ela pode ter aberto antes da primeira chamada
+ * local. Informar quanto falta para o reset fixa a grade no relógio certo.
+ */
+el('in-reset-min').addEventListener('change', async () => {
+  const min = Number(el('in-reset-min').value);
+  const b = last && last.usage.block;
+  if (!(min > 0) || !b) {
+    el('reset-hint').textContent = 'Informe quantos minutos faltam para o reset segundo o /usage.';
+    return;
+  }
+  // O servidor abre a janela na hora cheia, então o início é arredondado para a
+  // hora mais próxima: absorve tanto o arredondamento do `/usage` quanto o
+  // tempo entre ler o número e digitá-lo.
+  const raw = Date.now() + min * 60000 - b.hours * 3600000;
+  const anchor = Math.round(raw / 3600000) * 3600000;
+  await window.tokens.setConfig({ blockAnchor: anchor });
+  el('reset-hint').textContent = `Bloco ancorado em ${hhmm(anchor)}, reseta ${hhmm(anchor + b.hours * 3600000)}.`;
+});
 
 /**
  * Calibração: o limite do plano não vem em nenhum arquivo local, mas a

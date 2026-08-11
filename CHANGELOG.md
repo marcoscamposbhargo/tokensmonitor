@@ -66,6 +66,17 @@ Revisão de precisão das métricas e redesenho do painel.
   `requestId`. A mesma chamada reaparece quando uma sessão é retomada e o
   arquivo é copiado.
 
+### Adicionado — ancoragem do bloco
+
+- **Início do bloco informado pelo `/usage`** (`blockAnchor`). A janela do
+  servidor conta uso de outros dispositivos e do claude.ai, que não aparecem nos
+  transcripts locais: quando o bloco abre fora desta máquina, a detecção local
+  começa a contar tarde. Observado na prática — o monitor dizia que faltavam 3h
+  para o reset enquanto o `/usage` dizia 11 minutos, porque a primeira chamada
+  local do dia foi às 17:12 e a janela do servidor havia aberto às 14:00.
+  Informando quanto falta para o reset, o início é deduzido, arredondado para a
+  hora cheia (que é onde o servidor abre a janela) e a grade avança sozinha.
+
 ### Adicionado — identidade
 
 - **Ícone do app** em `assets/`: mostrador circular aberto embaixo, preenchido

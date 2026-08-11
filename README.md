@@ -100,6 +100,23 @@ Reproduz o formato do `/usage` com os dados locais:
   sessões com o mesmo número de chamadas custam diferente.
 - **Consumo diário** — barra por dia nos últimos 14 dias, com hoje destacado
 
+## Ancorar o bloco no /usage
+
+A janela do servidor conta uso de **outros dispositivos e do claude.ai**, que não
+deixam rastro nos transcripts desta máquina. Quando o bloco abre fora daqui, a
+detecção local começa a contar tarde e o reset sai errado — o monitor pode dizer
+que faltam 3h enquanto o `/usage` diz que faltam 11 minutos, porque a primeira
+chamada local do dia foi às 17:12 e a janela do servidor abriu às 14:00.
+
+Para corrigir, informe em **Reseta em (min) no /usage** quantos minutos faltam
+segundo o `/usage`. O início do bloco é deduzido e arredondado para a hora cheia,
+que é onde o servidor abre a janela, e a grade passa a avançar sozinha de bloco
+em bloco. O painel marca o bloco como `ancorado`.
+
+Vale reancorar quando o `/usage` divergir de novo — por exemplo depois de um
+período usando o Claude em outra máquina. Zerar `blockAnchor` no `config.json`
+volta para a detecção pelos arquivos locais.
+
 ## Porcentagem do limite (calibração)
 
 O `/usage` mostra a **porcentagem do limite do seu plano**. Esse número vem do

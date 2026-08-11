@@ -104,6 +104,13 @@ class TokenWatcher extends EventEmitter {
     this.ready = false;
     this.minuteOrder = []; // chaves de `minutes` em ordem, recalculado sob demanda
     this.minuteOrderDirty = true;
+    // Início de bloco informado pelo usuário a partir do `/usage`. Ver
+    // `currentBlockStart`.
+    this.blockAnchor = 0;
+  }
+
+  setBlockAnchor(ts) {
+    this.blockAnchor = ts > 0 ? ts : 0;
   }
 
   async start() {
@@ -391,6 +398,7 @@ class TokenWatcher extends EventEmitter {
     const blockStart = this.currentBlockStart(now);
     const block = {
       hours: BLOCK_HOURS,
+      anchored: this.blockAnchor > 0,
       tokens: 0,
       cost: 0,
       messages: 0,
@@ -461,6 +469,14 @@ class TokenWatcher extends EventEmitter {
    * Devolve null quando o último bloco já expirou (nenhum bloco aberto agora).
    */
   currentBlockStart(now) {
+    // Com âncora informada, a grade é dada: basta avançar de bloco em bloco até
+    // alcançar o presente. É mais confiável que a detecção local, porque a
+    // janela do servidor também conta uso de outros dispositivos e do claude.ai,
+    // que não deixam rastro nos transcripts desta máquina.
+    if (this.blockAnchor > 0 && now >= this.blockAnchor) {
+      return this.blockAnchor + Math.floor((now - this.blockAnchor) / BLOCK_MS) * BLOCK_MS;
+    }
+
     const times = this.sortedMinutes();
     let i = 0;
     while (i < times.length && times[i] <= now - 7 * DAY_MS) i++;

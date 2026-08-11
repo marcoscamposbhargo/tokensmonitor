@@ -29,6 +29,13 @@ const DEFAULTS = {
   // desloca o início de todos eles e o consumo medido vira outro número. Sem
   // esse registro o painel mostraria uma porcentagem errada com cara de certa.
   blockCalHours: 0,
+  // Timestamp do INÍCIO de um bloco conhecido, informado a partir do `/usage`.
+  // 0 = detectar pelos transcripts.
+  //
+  // Existe porque a janela do servidor conta uso de outros dispositivos e do
+  // claude.ai, que não aparecem nos arquivos locais: quando o bloco abre fora
+  // desta máquina, a detecção local começa a contar tarde e o reset sai errado.
+  blockAnchor: 0,
   // Fração do limite que dispara o aviso amarelo.
   warnAt: 0.8,
   notify: true,
@@ -75,6 +82,7 @@ function set(patch) {
     if (!(cache[k] > 0)) cache[k] = 0;
   }
   if (!(cache.blockCalHours > 0)) cache.blockCalHours = 0;
+  if (!(cache.blockAnchor > 0)) cache.blockAnchor = 0;
   // Cota sem calibração não existe: zerar uma zera a outra.
   if (cache.blockCostLimit === 0) cache.blockCalHours = 0;
   if (filePath) {
